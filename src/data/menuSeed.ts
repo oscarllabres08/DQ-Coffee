@@ -80,7 +80,7 @@ export const menuSeed: MenuItem[] = [
   { name: 'Flat White', category: 'Specialty hot coffee', temperature: 'Hot', size: '16 oz', price: 150 },
 ];
 
-const itemKey = (item: Pick<MenuItem, 'name' | 'temperature' | 'size'>) => `${item.name}|${item.temperature}|${item.size}`;
+const itemKey = (item: { name: string; temperature: string; size: string }) => `${item.name}|${item.temperature}|${item.size}`;
 
 async function removeDuplicates(rows: { id: string; name: string; temperature: string; size: string }[]) {
   const seen = new Set<string>();
