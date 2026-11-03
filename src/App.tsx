@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
+import { printSaleReceipt, warmUpPrinter } from '@/lib/receiptPrinter';
 import { ensureMenu } from '@/data/menuSeed';
 import { Banknote, BarChart3, Box, Calendar, Car, ChevronDown, Coffee, CreditCard, Download, Droplets, Eye, EyeOff, Home, ImagePlus, LayoutDashboard, Lock, LogOut, Menu, Moon, Package, Pencil, Plus, Receipt, Search, Settings, ShoppingBag, Smartphone, Sun, Tag, Trash2, TrendingUp, Trophy, UserRound, Users, Wifi, Wrench, X, Zap, ChevronRight } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
@@ -261,6 +262,7 @@ function POS({ products, cart, setCart, onSale }: { products: Product[]; cart: C
   const [group, setGroup] = useState<MenuGroup>('Beverages'); const [subcategory, setSubcategory] = useState<'All' | Subcategory>('All'); const [search, setSearch] = useState(''); const [payment, setPayment] = useState('Cash'); const [cashReceived, setCashReceived] = useState(''); const [message, setMessage] = useState(''); const [saving, setSaving] = useState(false);
   const [picker, setPicker] = useState<Product | null>(null); const [sweetness, setSweetness] = useState('0%'); const [wantAddons, setWantAddons] = useState(false); const [pickedAddons, setPickedAddons] = useState<string[]>([]); const [cartOpen, setCartOpen] = useState(false);
   useEffect(() => { document.body.classList.toggle('sheet-lock', cartOpen); return () => document.body.classList.remove('sheet-lock'); }, [cartOpen]);
+  useEffect(() => { warmUpPrinter(); }, []);
   const visible = products.filter(p => p.category === group && (subcategory === 'All' || p.subcategory === subcategory) && p.name.toLowerCase().includes(search.toLowerCase())); const subtotal = cart.reduce((sum, item) => sum + lineUnit(item) * item.cartQuantity, 0); const total = subtotal; const paymentOptions = ['Cash', 'GCash', 'Card'] as const; const paymentIcons: Record<string, ReactNode> = { Cash: <Banknote size={16} />, GCash: <Smartphone size={16} />, Card: <CreditCard size={16} /> };
   const reserved = (productId: string) => cart.filter(item => item.id === productId).reduce((sum, item) => sum + item.cartQuantity, 0);
   const openPicker = (product: Product) => { if (product.quantity === 0) return; if (reserved(product.id) >= product.quantity) { setMessage('That item is already fully in the order.'); return; } setMessage(''); if (!allowsExtras(product)) { const lineId = product.id; const exists = cart.find(item => item.lineId === lineId); setCart(exists ? cart.map(item => item.lineId === lineId ? { ...item, cartQuantity: item.cartQuantity + 1 } : item) : [...cart, { ...product, lineId, cartQuantity: 1, sweetness: '', addons: [] }]); return; } setPicker(product); setSweetness('0%'); setWantAddons(false); setPickedAddons([]); };
@@ -270,21 +272,27 @@ function POS({ products, cart, setCart, onSale }: { products: Product[]; cart: C
   const receivedCents = Math.round((Number(cashReceived) || 0) * 100); const totalCents = Math.round(total * 100); const change = (receivedCents - totalCents) / 100; const cashReady = cashReceived !== '' && receivedCents >= totalCents;
   const checkout = async () => {
     if (!cart.length || !cashReady || saving) return;
+    const receiptItems = cart.map(item => ({ name: item.name, detail: orderDetail(item), qty: item.cartQuantity, unit: lineUnit(item), amount: lineUnit(item) * item.cartQuantity }));
+    const salePayment = payment;
+    const saleTotal = total;
+    const saleReceived = Number(cashReceived) || 0;
+    const saleChange = change;
     setSaving(true);
     setMessage('');
     const started = Date.now();
     try {
-      const { data: sale, error } = await supabase.from('sales').insert({ subtotal, tax: 0, total, payment_method: payment }).select().maybeSingle();
+      const { data: sale, error } = await supabase.from('sales').insert({ subtotal, tax: 0, total: saleTotal, payment_method: salePayment }).select().maybeSingle();
       if (error || !sale) { setMessage(error?.message || 'Unable to complete sale.'); return; }
       const { error: itemsError } = await supabase.from('sale_items').insert(cart.map(item => ({ sale_id: sale.id, product_id: item.id, product_name: `${item.name} (${orderDetail(item)})`, quantity: item.cartQuantity, unit_price: lineUnit(item), line_total: lineUnit(item) * item.cartQuantity })));
       if (itemsError) { setMessage(itemsError.message); return; }
       const stock = new Map<string, { quantity: number; sold: number }>();
       cart.forEach(item => { const row = stock.get(item.id) ?? { quantity: item.quantity, sold: 0 }; row.sold += item.cartQuantity; stock.set(item.id, row); });
       await Promise.all([...stock].map(([id, row]) => supabase.from('products').update({ quantity: Math.max(0, row.quantity - row.sold) }).eq('id', id)));
+      const printed = await printSaleReceipt({ orderNo: String(sale.id).replace(/-/g, '').slice(0, 8).toUpperCase(), when: new Date(sale.created_at), payment: salePayment, items: receiptItems, total: saleTotal, received: saleReceived, change: saleChange });
       setCart([]);
       setCashReceived('');
       await onSale();
-      setMessage('Sale completed successfully.');
+      setMessage(printed ? 'Sale completed successfully.' : 'Sale saved, but the receipt did not print.');
     } finally {
       const wait = 600 - (Date.now() - started);
       if (wait > 0) await new Promise(resolve => setTimeout(resolve, wait));
