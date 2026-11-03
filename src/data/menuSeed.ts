@@ -118,13 +118,15 @@ export const menuSeed: MenuItem[] = [
 
 const itemKey = (item: { name: string; temperature: string; size: string }) => `${item.name}|${item.temperature}|${item.size}`;
 
-async function removeDuplicates(rows: { id: string; name: string; temperature: string; size: string }[]) {
-  const seen = new Set<string>();
+async function removeDuplicates(rows: { id: string; name: string; temperature: string; size: string; image_url: string | null }[]) {
+  const kept = new Map<string, { id: string; image_url: string | null }>();
   const extra: string[] = [];
   rows.forEach(row => {
     const key = itemKey(row);
-    if (seen.has(key)) extra.push(row.id);
-    else seen.add(key);
+    const current = kept.get(key);
+    if (!current) { kept.set(key, row); return; }
+    if (!current.image_url && row.image_url) { extra.push(current.id); kept.set(key, row); return; }
+    extra.push(row.id);
   });
   for (let index = 0; index < extra.length; index += 40) {
     await supabase.from('products').delete().in('id', extra.slice(index, index + 40));
@@ -134,14 +136,15 @@ async function removeDuplicates(rows: { id: string; name: string; temperature: s
 let syncing: Promise<void> | null = null;
 
 async function syncMenu() {
-  const { data, error } = await supabase.from('products').select('id, name, temperature, size').order('created_at', { ascending: true });
+  const { data, error } = await supabase.from('products').select('id, name, temperature, size, image_url').order('created_at', { ascending: true });
   if (error || !data) return;
-  await removeDuplicates(data);
-  const existing = new Set<string>();
-  data.forEach(row => existing.add(itemKey(row)));
-  const missing = menuSeed.filter(item => !existing.has(itemKey(item)));
-  if (!missing.length) return;
-  const rows = missing.map(item => ({ ...item, description: null, image_url: null, quantity: STARTING_STOCK }));
+  // A shop that already has a menu keeps deletions. Refilling "missing" seed items
+  // put removed foods and drinks back on every refresh, without their photos.
+  if (data.length > 0) {
+    await removeDuplicates(data);
+    return;
+  }
+  const rows = menuSeed.map(item => ({ ...item, description: null, image_url: null, quantity: STARTING_STOCK }));
   const { error: insertError } = await supabase.from('products').insert(rows);
   if (!insertError) return;
   for (const row of rows) await supabase.from('products').insert(row);

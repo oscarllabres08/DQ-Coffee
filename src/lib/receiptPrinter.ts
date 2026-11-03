@@ -70,13 +70,20 @@ function whenLabel(when: Date) {
   return ascii(`${date} ${time}`);
 }
 
+function itemLines(item: ReceiptItem) {
+  const price = amount(item.amount);
+  const nameWidth = Math.max(8, WIDTH - price.length - 1);
+  const nameLines = wrap(`${item.qty} ${item.name}`, nameWidth);
+  const lines = [columns(nameLines[0] || String(item.qty), price)];
+  nameLines.slice(1).forEach(line => lines.push(line));
+  wrap(item.detail, WIDTH - 2).forEach(line => lines.push(`  ${line}`));
+  if (item.qty > 1) lines.push(`  ${item.qty} x ${amount(item.unit)}`);
+  return lines;
+}
+
 function receiptLines(receipt: SaleReceipt) {
   const lines = ['DQ-Cafe', 'Artisan coffee & cakes', whenLabel(receipt.when), `#${receipt.orderNo}`, '-'.repeat(WIDTH)];
-  receipt.items.forEach(item => {
-    wrap(`${item.qty} ${item.name}`).forEach(line => lines.push(line));
-    wrap(item.detail).forEach(line => lines.push(line));
-    lines.push(columns(`${item.qty} x ${amount(item.unit)}`, amount(item.amount)));
-  });
+  receipt.items.forEach(item => lines.push(...itemLines(item)));
   lines.push('-'.repeat(WIDTH), columns('TOTAL', amount(receipt.total)));
   if (receipt.payment === 'Cash') lines.push(columns('Cash', amount(receipt.received)), columns('Change', amount(receipt.change)));
   else lines.push(columns(receipt.payment, amount(receipt.total)), columns('Received', amount(receipt.received)), columns('Change', amount(receipt.change)));
