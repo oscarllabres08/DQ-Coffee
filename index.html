@@ -24,7 +24,15 @@
     <meta name="twitter:image" content="__OG_IMAGE__" />
     <meta name="twitter:image:alt" content="DQ-Cafe logo" />
     <script>
-      try { if (localStorage.getItem('dq-theme') === 'dark') document.documentElement.classList.add('dark'); } catch (e) {}
+      try {
+        var dark = localStorage.getItem('dq-theme') === 'dark';
+        var signedIn = false;
+        for (var i = 0; i < localStorage.length; i++) {
+          var key = localStorage.key(i) || '';
+          if (key.indexOf('sb-') === 0 && key.slice(-11) === 'auth-token') signedIn = true;
+        }
+        if (dark && signedIn) document.documentElement.classList.add('dark');
+      } catch (e) {}
     </script>
   </head>
   <body>
