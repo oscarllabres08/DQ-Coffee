@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 import { ensureMenu } from '@/data/menuSeed';
-import { Banknote, BarChart3, Box, Calendar, ChevronDown, Coffee, CreditCard, Download, Droplets, Eye, EyeOff, ImagePlus, LayoutDashboard, Lock, LogOut, Menu, Moon, Pencil, Plus, Receipt, Search, Settings, ShoppingBag, Smartphone, Sun, Tag, Trash2, TrendingUp, Trophy, UserRound, UtensilsCrossed, Wifi, X, Zap, ChevronRight } from 'lucide-react';
+import { Banknote, BarChart3, Box, Calendar, Car, ChevronDown, Coffee, CreditCard, Download, Droplets, Eye, EyeOff, Home, ImagePlus, LayoutDashboard, Lock, LogOut, Menu, Moon, Package, Pencil, Plus, Receipt, Search, Settings, ShoppingBag, Smartphone, Sun, Tag, Trash2, TrendingUp, Trophy, UserRound, Users, Wifi, Wrench, X, Zap, ChevronRight } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
 
 type MenuGroup = 'Food' | 'Beverages';
@@ -10,7 +10,7 @@ type Subcategory = 'Coffee' | 'Non Coffee' | 'Matcha Series' | 'Frappe' | 'Spark
 type Temperature = 'Hot' | 'Iced' | 'None';
 type Size = '16 oz' | '22 oz' | 'Regular' | '6 pcs' | '12 pcs';
 type Page = 'dashboard' | 'pos' | 'inventory' | 'sales' | 'expenses' | 'settings';
-type ExpenseCategory = 'Water Bill' | 'Electric Bill' | 'Internet Bill' | 'Food' | 'Others';
+type ExpenseCategory = 'Rent' | 'Electricity' | 'Water Bill' | 'Internet' | 'Salaries / Wages' | 'Transportation' | 'Maintenance' | 'Supplies' | 'Miscellaneous';
 type Product = { id: string; name: string; description: string | null; category: MenuGroup; subcategory: Subcategory; temperature: Temperature; size: Size; image_url: string | null; price: number; quantity: number; created_at: string };
 type Addon = { id: string; name: string; price: number };
 type CartItem = Product & { lineId: string; cartQuantity: number; sweetness: string; addons: Addon[] };
@@ -27,16 +27,30 @@ const applyTheme = (dark: boolean) => {
 const money = (value: number) => `₱${value.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`;
 const localDateKey = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const formatDay = (key: string) => { const [year, month, day] = key.split('-').map(Number); return new Date(year, (month || 1) - 1, day || 1).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }); };
-const expenseCategories: ExpenseCategory[] = ['Water Bill', 'Electric Bill', 'Internet Bill', 'Food', 'Others'];
+const expenseCategories: ExpenseCategory[] = ['Rent', 'Electricity', 'Water Bill', 'Internet', 'Salaries / Wages', 'Transportation', 'Maintenance', 'Supplies', 'Miscellaneous'];
 function expenseTotal(items: Expense[]) { return items.reduce((sum, item) => sum + Number(item.amount), 0); }
 function expenseIcon(category: string, size = 16) {
+  if (category === 'Rent') return <Home size={size} />;
+  if (category === 'Electricity') return <Zap size={size} />;
   if (category === 'Water Bill') return <Droplets size={size} />;
-  if (category === 'Electric Bill') return <Zap size={size} />;
-  if (category === 'Internet Bill') return <Wifi size={size} />;
-  if (category === 'Food') return <UtensilsCrossed size={size} />;
+  if (category === 'Internet') return <Wifi size={size} />;
+  if (category === 'Salaries / Wages') return <Users size={size} />;
+  if (category === 'Transportation') return <Car size={size} />;
+  if (category === 'Maintenance') return <Wrench size={size} />;
+  if (category === 'Supplies') return <Package size={size} />;
   return <Tag size={size} />;
 }
-function expenseTone(category: string) { return category === 'Others' ? 'others' : category.split(' ')[0].toLowerCase(); }
+function expenseTone(category: string) {
+  if (category === 'Rent') return 'rent';
+  if (category === 'Electricity') return 'electricity';
+  if (category === 'Water Bill') return 'water';
+  if (category === 'Internet') return 'internet';
+  if (category === 'Salaries / Wages') return 'wages';
+  if (category === 'Transportation') return 'transport';
+  if (category === 'Maintenance') return 'maintenance';
+  if (category === 'Supplies') return 'supplies';
+  return 'misc';
+}
 const menuGroups: MenuGroup[] = ['Beverages', 'Food'];
 const drinkSubs: Subcategory[] = ['Coffee', 'Non Coffee', 'Matcha Series', 'Frappe', 'Sparkling Series', 'Tea Infusion', 'Specialty hot coffee'];
 const foodSubs: Subcategory[] = ['Breakfast', 'Pasta', 'Snacks', 'Waffles', 'Korean Dish', 'Fries'];
@@ -469,34 +483,29 @@ function SalesAnalytics({ sales, expenses }: { sales: Sale[]; expenses: Expense[
 function ExpensesPage({ expenses, setExpenses }: { expenses: Expense[]; setExpenses: (items: Expense[]) => void }) {
   const [range, setRange] = useState<SalesRange>('week');
   const [pickedDate, setPickedDate] = useState('');
-  const [category, setCategory] = useState<ExpenseCategory>('Food');
-  const [customLabel, setCustomLabel] = useState('');
+  const [category, setCategory] = useState<ExpenseCategory>('Rent');
   const [amount, setAmount] = useState('');
   const [notes, setNotes] = useState('');
   const [spentOn, setSpentOn] = useState(() => localDateKey());
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
-  const icons: Record<string, ReactNode> = { 'Water Bill': expenseIcon('Water Bill'), 'Electric Bill': expenseIcon('Electric Bill'), 'Internet Bill': expenseIcon('Internet Bill'), Food: expenseIcon('Food'), Others: expenseIcon('Others') };
+  const icons: Record<string, ReactNode> = Object.fromEntries(expenseCategories.map(item => [item, expenseIcon(item)]));
   const visible = (pickedDate ? expenses.filter(item => item.spent_on === pickedDate) : expensesInRange(expenses, range)).slice().sort((a, b) => b.spent_on.localeCompare(a.spent_on) || b.created_at.localeCompare(a.created_at));
   const total = expenseTotal(visible);
   const periodName = pickedDate ? formatDay(pickedDate) : rangeLabel[range];
   const save = async (event: FormEvent) => {
     event.preventDefault();
     setMessage(null);
-    const custom = customLabel.trim();
-    if (category === 'Others' && !custom) { setMessage({ tone: 'error', text: 'Enter a name for this expense.' }); return; }
     const value = Number(amount);
     if (!amount || Number.isNaN(value) || value <= 0) { setMessage({ tone: 'error', text: 'Enter an amount greater than zero.' }); return; }
     if (!spentOn) { setMessage({ tone: 'error', text: 'Choose the date of this expense.' }); return; }
     setSaving(true);
-    const label = category === 'Others' ? custom : category;
-    const { data, error } = await supabase.from('expenses').insert({ category, label, amount: value, notes: notes.trim() || null, spent_on: spentOn }).select().maybeSingle();
+    const { data, error } = await supabase.from('expenses').insert({ category, label: category, amount: value, notes: notes.trim() || null, spent_on: spentOn }).select().maybeSingle();
     setSaving(false);
-    if (error || !data) { setMessage({ tone: 'error', text: /schema cache|does not exist|Could not find the table/i.test(error?.message || '') ? 'The expenses table is not in the database yet. Run the new expenses migration in Supabase, then save again.' : (error?.message || 'Unable to save expense.') }); return; }
+    if (error || !data) { setMessage({ tone: 'error', text: /schema cache|does not exist|Could not find the table|expenses_category_check/i.test(error?.message || '') ? 'Update the expenses categories in Supabase, then save again.' : (error?.message || 'Unable to save expense.') }); return; }
     setExpenses([...expenses, data as Expense].sort((a, b) => b.spent_on.localeCompare(a.spent_on) || b.created_at.localeCompare(a.created_at)));
     setAmount('');
     setNotes('');
-    if (category === 'Others') setCustomLabel('');
     setMessage({ tone: 'ok', text: 'Expense saved.' });
   };
   const remove = async (id: string) => {
@@ -507,7 +516,7 @@ function ExpensesPage({ expenses, setExpenses }: { expenses: Expense[]; setExpen
   };
   return <div className="page-stack">
     <div className="page-intro">
-      <div><span className="eyebrow">DAILY COSTS</span><h2>Keep every peso accounted for.</h2><p className="muted">Bills, food, and anything else the shop spends.</p></div>
+      <div><span className="eyebrow">DAILY COSTS</span><h2>Keep every peso accounted for.</h2><p className="muted">Rent, utilities, wages, and the other costs of running the shop.</p></div>
       <div className="expense-filters">
         <div className="range-pills" role="group" aria-label="Expense period">{(['week', 'month', 'year'] as const).map(option => <button key={option} type="button" className={!pickedDate && range === option ? 'active' : ''} onClick={() => { setPickedDate(''); setRange(option); }}>{rangeLabel[option]}</button>)}</div>
         <label className={pickedDate ? 'date-icon-btn active' : 'date-icon-btn'} title="Choose a date"><Calendar size={18} /><input type="date" aria-label="Show expenses for a specific date" value={pickedDate} onChange={event => setPickedDate(event.target.value)} /></label>
@@ -518,8 +527,7 @@ function ExpensesPage({ expenses, setExpenses }: { expenses: Expense[]; setExpen
       <section className="panel expense-composer">
         <div className="section-heading"><div><span className="eyebrow">NEW EXPENSE</span><h3>Add a cost</h3></div></div>
         <form onSubmit={save}>
-          <label>Category<CategoryMenu value={category} options={expenseCategories} icons={icons} onChange={value => { const next = value as ExpenseCategory; setCategory(next); if (next !== 'Others') setCustomLabel(''); }} /></label>
-          {category === 'Others' && <label>Expense name<input required value={customLabel} onChange={event => setCustomLabel(event.target.value)} placeholder="e.g. Gas, supplies, repairs" autoComplete="off" /></label>}
+          <label>Category<CategoryMenu value={category} options={expenseCategories} icons={icons} onChange={value => setCategory(value as ExpenseCategory)} /></label>
           <div className="form-grid">
             <label>Amount<input required inputMode="decimal" value={amount} onChange={event => { const next = event.target.value; if (next === '' || /^\d*\.?\d{0,2}$/.test(next)) setAmount(next); }} placeholder="0.00" /></label>
             <label>Date<input required type="date" value={spentOn} onChange={event => setSpentOn(event.target.value)} /></label>

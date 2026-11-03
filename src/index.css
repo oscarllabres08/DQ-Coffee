@@ -678,11 +678,15 @@ html.dark .auth-shell .form-message { background: #fff0ea; color: #9b402c; }
 .expense-row small { color: #5e4638; font-size: 13px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .expense-row > b { color: #8a3d2a; font-size: 16px; white-space: nowrap; }
 .expense-mark { width: 36px; height: 36px; flex: 0 0 36px; display: grid; place-items: center; border-radius: 10px; }
+.expense-mark.rent { color: #6a3418; background: #f6e7da; }
+.expense-mark.electricity { color: #a16207; background: #fff4d6; }
 .expense-mark.water { color: #1f6f9e; background: #e5f3fb; }
-.expense-mark.electric { color: #a16207; background: #fff4d6; }
 .expense-mark.internet { color: #5b4b8a; background: #eee8fb; }
-.expense-mark.food { color: #1f7a52; background: #e5f6ec; }
-.expense-mark.others { color: #6a3418; background: #f6e7da; }
+.expense-mark.wages { color: #1f7a52; background: #e5f6ec; }
+.expense-mark.transport { color: #3d4f73; background: #e8eef8; }
+.expense-mark.maintenance { color: #8a4b24; background: #f8eadc; }
+.expense-mark.supplies { color: #6b4c2a; background: #f4ead8; }
+.expense-mark.misc { color: #6c4a32; background: #f3ebe4; }
 .spent-total-wrap { text-align: right; }
 .spent-total-wrap strong { display: block; color: #8a3d2a; font: 700 26px/1 'Playfair Display', serif; }
 .spent-total-wrap small { display: block; margin-top: 4px; color: #6a5346; font-size: 12px; }
@@ -726,11 +730,15 @@ html.dark .expense-row { border-color: #3a2a22; }
 html.dark .expense-row strong { color: #f7efe8; }
 html.dark .expense-row small, html.dark .spent-total-wrap small { color: #c4b0a2; }
 html.dark .expense-row > b, html.dark .spent-total-wrap strong { color: #f0b0a0; }
+html.dark .expense-mark.rent { background: #3a281c; color: #f0c48a; }
+html.dark .expense-mark.electricity { background: #3a3018; color: #f0d48a; }
 html.dark .expense-mark.water { background: #1a3344; color: #9fd4f2; }
-html.dark .expense-mark.electric { background: #3a3018; color: #f0d48a; }
 html.dark .expense-mark.internet { background: #2c2640; color: #d4c6f5; }
-html.dark .expense-mark.food { background: #1c3328; color: #9ddec0; }
-html.dark .expense-mark.others { background: #3a281c; color: #f0c48a; }
+html.dark .expense-mark.wages { background: #1c3328; color: #9ddec0; }
+html.dark .expense-mark.transport { background: #243044; color: #c5d4ef; }
+html.dark .expense-mark.maintenance { background: #3a2a1c; color: #f0c48a; }
+html.dark .expense-mark.supplies { background: #332818; color: #e7d3b0; }
+html.dark .expense-mark.misc { background: #2c221c; color: #e6d5c8; }
 html.dark .export-btn { background: #241812; border-color: #3d2b22; color: #f6eee6; }
 html.dark .export-btn:hover { background: #3a281e; }
 html.dark .date-icon-btn { background: #241812; border-color: #3d2b22; color: #f6eee6; }

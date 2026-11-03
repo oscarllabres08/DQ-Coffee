@@ -2,9 +2,9 @@
 # Cafe expenses
 
 1. New table
-- `expenses` stores owner-scoped costs such as utility bills, food, and other spending.
-- `category` is Water Bill, Electric Bill, Internet Bill, Food, or Others.
-- `label` repeats the category, or holds a custom name when the category is Others.
+- `expenses` stores owner-scoped business costs.
+- `category` is Rent, Electricity, Water Bill, Internet, Salaries / Wages, Transportation, Maintenance, Supplies, or Miscellaneous.
+- `label` repeats the category name.
 - `spent_on` is the calendar day the cost belongs to, so a day can be reviewed on its own.
 
 2. Security
@@ -15,7 +15,7 @@
 CREATE TABLE IF NOT EXISTS public.expenses (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE,
-  category text NOT NULL CHECK (category IN ('Water Bill', 'Electric Bill', 'Internet Bill', 'Food', 'Others')),
+  category text NOT NULL CHECK (category IN ('Rent', 'Electricity', 'Water Bill', 'Internet', 'Salaries / Wages', 'Transportation', 'Maintenance', 'Supplies', 'Miscellaneous')),
   label text NOT NULL CHECK (char_length(btrim(label)) > 0),
   amount numeric(10,2) NOT NULL CHECK (amount > 0),
   notes text,
