@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase';
 
 type MenuGroup = 'Food' | 'Beverages';
-type Subcategory = 'Coffee' | 'Non Coffee' | 'Matcha Series' | 'Frappe' | 'Sparkling Series' | 'Tea Infusion' | 'Specialty hot coffee' | 'Breakfast' | 'Pasta' | 'Snacks' | 'Waffles' | 'Korean Dish' | 'Fries';
+type Subcategory = 'Coffee' | 'Non Coffee' | 'Matcha Series' | 'Frappe' | 'Sparkling Series' | 'Tea Infusion' | 'Specialty hot coffee' | 'Breakfast' | 'Pasta' | 'Snacks' | 'Waffles' | 'Pastries' | 'Cakes' | 'Korean Dish' | 'Fries';
 
 type MenuItem = {
   name: string;

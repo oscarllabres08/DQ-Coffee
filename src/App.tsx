@@ -7,7 +7,7 @@ import { Banknote, BarChart3, Box, Calendar, Car, ChevronDown, Coffee, CreditCar
 import type { Session } from '@supabase/supabase-js';
 
 type MenuGroup = 'Food' | 'Beverages';
-type Subcategory = 'Coffee' | 'Non Coffee' | 'Matcha Series' | 'Frappe' | 'Sparkling Series' | 'Tea Infusion' | 'Specialty hot coffee' | 'Breakfast' | 'Pasta' | 'Snacks' | 'Waffles' | 'Korean Dish' | 'Fries';
+type Subcategory = 'Coffee' | 'Non Coffee' | 'Matcha Series' | 'Frappe' | 'Sparkling Series' | 'Tea Infusion' | 'Specialty hot coffee' | 'Breakfast' | 'Pasta' | 'Snacks' | 'Waffles' | 'Pastries' | 'Cakes' | 'Korean Dish' | 'Fries';
 type Temperature = 'Hot' | 'Iced' | 'None';
 type Size = '16 oz' | '22 oz' | 'Regular' | '6 pcs' | '12 pcs';
 type Page = 'dashboard' | 'pos' | 'inventory' | 'sales' | 'expenses' | 'settings';
@@ -69,7 +69,7 @@ function expenseTone(category: string) {
 }
 const menuGroups: MenuGroup[] = ['Beverages', 'Food'];
 const drinkSubs: Subcategory[] = ['Coffee', 'Non Coffee', 'Matcha Series', 'Frappe', 'Sparkling Series', 'Tea Infusion', 'Specialty hot coffee'];
-const foodSubs: Subcategory[] = ['Breakfast', 'Pasta', 'Snacks', 'Waffles', 'Korean Dish', 'Fries'];
+const foodSubs: Subcategory[] = ['Breakfast', 'Pasta', 'Snacks', 'Waffles', 'Pastries', 'Cakes', 'Korean Dish', 'Fries'];
 const subcategories: Record<MenuGroup, Subcategory[]> = { Beverages: drinkSubs, Food: foodSubs };
 const frappeSizes: Size[] = ['16 oz', '22 oz'];
 const snackSizes: Size[] = ['Regular', '6 pcs', '12 pcs'];
@@ -85,6 +85,8 @@ const temperatureOptions: Record<Subcategory, Temperature[]> = {
   Pasta: ['None'],
   Snacks: ['None'],
   Waffles: ['None'],
+  Pastries: ['None'],
+  Cakes: ['None'],
   'Korean Dish': ['None'],
   Fries: ['None'],
 };
