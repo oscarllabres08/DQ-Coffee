@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
+import { downloadSalesSheet } from '@/lib/salesSheet';
 import { printSaleReceipt, warmUpPrinter } from '@/lib/receiptPrinter';
 import { ensureMenu } from '@/data/menuSeed';
 import { Banknote, BarChart3, Box, Calendar, Car, ChevronDown, Coffee, CreditCard, Download, Droplets, Eye, EyeOff, Home, ImagePlus, LayoutDashboard, Lock, LogOut, Menu, Moon, Package, Pencil, Plus, Receipt, Search, Settings, ShoppingBag, Smartphone, Sun, Tag, Trash2, TrendingUp, Trophy, UserRound, Users, Wifi, Wrench, X, Zap, ChevronRight } from 'lucide-react';
@@ -476,20 +477,6 @@ function dayBuckets(key: string) {
     return { id: `${key}-${hour}`, label: hour % 3 === 0 ? stamp.toLocaleTimeString('en-PH', { hour: 'numeric' }) : '', sheetLabel: stamp.toLocaleTimeString('en-PH', { hour: 'numeric' }), match: (date: Date) => localDateKey(date) === key && date.getHours() === hour };
   });
 }
-function downloadSheet(filename: string, rows: (string | number)[][]) {
-  const cell = (value: string | number) => `<td>${String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;')}</td>`;
-  const table = rows.map(row => `<tr>${row.map(cell).join('')}</tr>`).join('');
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body><table>${table}</table></body></html>`;
-  const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
 function SalesAnalytics({ sales, expenses }: { sales: Sale[]; expenses: Expense[] }) {
   const [range, setRange] = useState<SalesRange>('week');
   const [pickedDate, setPickedDate] = useState('');
@@ -508,27 +495,18 @@ function SalesAnalytics({ sales, expenses }: { sales: Sale[]; expenses: Expense[
   const dense = Boolean(pickedDate) || range === 'month';
   const exportSheet = () => {
     const fileName = pickedDate ? `DQ-Cafe-sales-${pickedDate}.xls` : `DQ-Cafe-sales-${range}.xls`;
-    downloadSheet(fileName, [
-      ['DQ-Cafe Sales'],
-      ['Period', periodName],
-      [],
-      ['Gross income', revenue.toFixed(2)],
-      ['Expenses', spent.toFixed(2)],
-      ['Net income', net.toFixed(2)],
-      ['Transactions', filtered.length],
-      ['Average order', average.toFixed(2)],
-      [],
-      ['Orders'],
-      ['Date', 'Time', 'Payment', 'Total'],
-      ...filtered.map(sale => {
-        const when = new Date(sale.created_at);
-        return [when.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }), when.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' }), sale.payment_method, Number(sale.total).toFixed(2)];
-      }),
-      [],
-      ['Revenue trend'],
-      [pickedDate ? 'Hour' : range === 'year' ? 'Month' : 'Day', 'Total'],
-      ...points.map(point => [point.sheetLabel, point.total.toFixed(2)]),
-    ]);
+    downloadSalesSheet(fileName, {
+      periodName,
+      revenue,
+      spent,
+      net,
+      transactions: filtered.length,
+      average,
+      orders: filtered.map(sale => ({ createdAt: sale.created_at, payment: sale.payment_method, total: Number(sale.total) })),
+      trendTitle: pickedDate ? 'Hour' : range === 'year' ? 'Month' : 'Day',
+      points: points.map(point => ({ label: point.sheetLabel, total: point.total })),
+      emptyOrders: pickedDate ? 'No orders on this day.' : 'No orders in this period.',
+    });
   };
   return <div className="page-stack">
     <div className="page-intro">
