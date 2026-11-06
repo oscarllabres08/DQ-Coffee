@@ -14,25 +14,66 @@ const WIDTH = 32;
 type PrinterEndpoint = { direction: string; type: string; endpointNumber: number };
 type PrinterDevice = {
   opened: boolean;
+  productName?: string | null;
+  manufacturerName?: string | null;
   configuration: { interfaces: { interfaceNumber: number; alternates: { endpoints: PrinterEndpoint[] }[] }[] } | null;
   open: () => Promise<void>;
   selectConfiguration: (value: number) => Promise<void>;
   claimInterface: (face: number) => Promise<void>;
   releaseInterface: (face: number) => Promise<void>;
   transferOut: (endpoint: number, data: BufferSource) => Promise<{ status: string }>;
+  forget?: () => Promise<void>;
 };
 type PrinterWriter = { write: (data: Uint8Array) => Promise<void>; releaseLock: () => void };
-type PrinterPort = { writable: { getWriter: () => PrinterWriter } | null; open: (options: { baudRate: number }) => Promise<void> };
+type PrinterPort = { writable: { getWriter: () => PrinterWriter } | null; open: (options: { baudRate: number }) => Promise<void>; forget?: () => Promise<void> };
+type UsbApi = { getDevices: () => Promise<PrinterDevice[]>; requestDevice: (options: { filters: { vendorId?: number }[] }) => Promise<PrinterDevice> };
+type SerialApi = { getPorts: () => Promise<PrinterPort[]>; requestPort: () => Promise<PrinterPort> };
 
+export type PrinterLink = { kind: 'usb' | 'serial'; name: string };
+export type PrintOutcome = 'printed' | 'unavailable' | 'failed';
+
+const PRINTER_KEY = 'dq-receipt-printer';
 let usbDevice: PrinterDevice | null = null;
 let serialPort: PrinterPort | null = null;
+let lastPrintError = '';
 
 function usbApi() {
-  return (navigator as Navigator & { usb?: { getDevices: () => Promise<PrinterDevice[]> } }).usb;
+  return (navigator as Navigator & { usb?: UsbApi }).usb;
 }
 
 function serialApi() {
-  return (navigator as Navigator & { serial?: { getPorts: () => Promise<PrinterPort[]> } }).serial;
+  return (navigator as Navigator & { serial?: SerialApi }).serial;
+}
+
+export function printerSupport() {
+  return { usb: Boolean(usbApi()?.requestDevice), serial: Boolean(serialApi()?.requestPort) };
+}
+
+function deviceName(device: PrinterDevice) {
+  return device.productName || device.manufacturerName || 'USB receipt printer';
+}
+
+function remember(kind: 'usb' | 'serial') {
+  localStorage.setItem(PRINTER_KEY, kind);
+}
+
+export function printerProblem() {
+  return lastPrintError;
+}
+
+function connectError(error: unknown, kind: 'usb' | 'serial') {
+  const name = error instanceof DOMException ? error.name : '';
+  if (name === 'NotFoundError') return 'No printer was selected.';
+  if (name === 'NotAllowedError' || name === 'SecurityError') return 'Chrome blocked the printer. Allow the prompt, then try again.';
+  if (kind === 'serial') return 'Could not open the serial printer. Plug it in and choose its COM port.';
+  return 'Could not open the USB printer. Plug it in and choose it from the Chrome list.';
+}
+
+function sendError(error: unknown) {
+  const message = error instanceof Error ? error.message : '';
+  if (/claim|access denied|security|busy|in use/i.test(message)) return 'Windows is holding this printer. Remove it from Windows Settings, under Printers, then connect it here again.';
+  if (/not found|disconnect|network/i.test(message)) return 'The printer is not responding. Check the power and the cable.';
+  return 'The receipt printer did not respond. Check that it is on and has paper.';
 }
 
 const amount = (value: number) => value.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -153,13 +194,78 @@ function escapeHtml(value: string) {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-export function warmUpPrinter() {
-  const jobs: Promise<void>[] = [];
+export async function refreshPrinter(): Promise<PrinterLink | null> {
+  const preferred = localStorage.getItem(PRINTER_KEY);
   const usb = usbApi();
   const serial = serialApi();
-  if (usb) jobs.push(usb.getDevices().then(devices => { usbDevice = devices[0] ?? usbDevice; }).catch(() => undefined));
-  if (serial) jobs.push(serial.getPorts().then(ports => { serialPort = ports[0] ?? serialPort; }).catch(() => undefined));
-  return Promise.all(jobs);
+  const devices = usb ? await usb.getDevices().catch(() => [] as PrinterDevice[]) : [];
+  const ports = serial ? await serial.getPorts().catch(() => [] as PrinterPort[]) : [];
+  const useSerial = preferred === 'serial' ? ports[0] : !devices[0] ? ports[0] : undefined;
+  if (useSerial) {
+    serialPort = useSerial;
+    usbDevice = null;
+    return { kind: 'serial', name: 'Serial receipt printer' };
+  }
+  if (devices[0]) {
+    usbDevice = devices[0];
+    serialPort = null;
+    return { kind: 'usb', name: deviceName(devices[0]) };
+  }
+  usbDevice = null;
+  serialPort = null;
+  return null;
+}
+
+export function warmUpPrinter() {
+  return refreshPrinter().then(() => undefined);
+}
+
+export async function connectPrinter(kind: 'usb' | 'serial'): Promise<PrinterLink> {
+  if (!window.isSecureContext) throw new Error('Open DQ-Cafe in Chrome to connect the receipt printer.');
+  try {
+    if (kind === 'usb') {
+      const usb = usbApi();
+      if (!usb?.requestDevice) throw new Error('This browser cannot connect a USB printer. Open DQ-Cafe in Chrome.');
+      const device = await usb.requestDevice({ filters: [] });
+      usbDevice = device;
+      serialPort = null;
+      remember('usb');
+      return { kind: 'usb', name: deviceName(device) };
+    }
+    const serial = serialApi();
+    if (!serial?.requestPort) throw new Error('This browser cannot connect a serial printer. Open DQ-Cafe in Chrome.');
+    const port = await serial.requestPort();
+    serialPort = port;
+    usbDevice = null;
+    remember('serial');
+    return { kind: 'serial', name: 'Serial receipt printer' };
+  } catch (error) {
+    if (error instanceof Error && !(error instanceof DOMException)) throw error;
+    throw new Error(connectError(error, kind));
+  }
+}
+
+export async function forgetPrinter() {
+  const usb = usbApi();
+  const serial = serialApi();
+  const devices = usb ? await usb.getDevices().catch(() => [] as PrinterDevice[]) : [];
+  const ports = serial ? await serial.getPorts().catch(() => [] as PrinterPort[]) : [];
+  await Promise.all([...devices.map(device => device.forget?.() ?? Promise.resolve()), ...ports.map(port => port.forget?.() ?? Promise.resolve())]);
+  usbDevice = null;
+  serialPort = null;
+  localStorage.removeItem(PRINTER_KEY);
+}
+
+export function sampleReceipt(): SaleReceipt {
+  return {
+    orderNo: 'TEST',
+    when: new Date(),
+    payment: 'Cash',
+    items: [{ name: 'Flat White', detail: 'Hot', qty: 1, unit: 150, amount: 150 }],
+    total: 150,
+    received: 200,
+    change: 50,
+  };
 }
 
 async function printUsb(device: PrinterDevice, payload: Uint8Array) {
@@ -197,7 +303,7 @@ async function printSerial(port: PrinterPort, payload: Uint8Array) {
   finally { writer.releaseLock(); }
 }
 
-function printDialog(receipt: SaleReceipt) {
+export function printReceiptDialog(receipt: SaleReceipt) {
   const iframe = document.createElement('iframe');
   iframe.setAttribute('aria-hidden', 'true');
   iframe.style.cssText = 'position:fixed;left:0;top:0;width:58mm;height:100vh;border:0;opacity:0;pointer-events:none;';
@@ -214,16 +320,16 @@ function printDialog(receipt: SaleReceipt) {
   return true;
 }
 
-export async function printSaleReceipt(receipt: SaleReceipt) {
+export async function printSaleReceipt(receipt: SaleReceipt): Promise<PrintOutcome> {
+  lastPrintError = '';
+  if (!usbDevice && !serialPort) await refreshPrinter();
   const payload = encodeReceipt(receipt);
-  if (usbDevice) {
-    try { await printUsb(usbDevice, payload); return true; }
-    catch { usbDevice = null; }
+  try {
+    if (usbDevice) { await printUsb(usbDevice, payload); return 'printed'; }
+    if (serialPort) { await printSerial(serialPort, payload); return 'printed'; }
+    return 'unavailable';
+  } catch (error) {
+    lastPrintError = sendError(error);
+    return 'failed';
   }
-  if (serialPort) {
-    try { await printSerial(serialPort, payload); return true; }
-    catch { serialPort = null; }
-  }
-  try { return printDialog(receipt); }
-  catch { return false; }
 }

@@ -116,6 +116,17 @@ input:focus, textarea:focus, select:focus { border-color: #b6763c; box-shadow: 0
 .account-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .password-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
 .account-divider { height: 1px; background: #efe6dc; margin: 2px 0; }
+.printer-block { display: grid; gap: 10px; }
+.printer-help { margin: 0; font-size: 13px; line-height: 1.45; }
+.printer-status { display: flex; gap: 8px; align-items: center; color: #3a2418; font-size: 14px; font-weight: 650; }
+.printer-dot { width: 8px; height: 8px; border-radius: 50%; background: #c4b3a4; flex: 0 0 8px; }
+.printer-dot.on { background: #1f7a52; box-shadow: 0 0 0 4px rgba(31,122,82,.14); }
+.printer-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.printer-actions .primary-btn, .printer-actions .secondary-btn { padding: 8px 12px; }
+.printer-actions button:disabled, .printer-choices button:disabled { opacity: .55; cursor: not-allowed; }
+.printer-choices { display: grid; gap: 8px; margin: 0 0 14px; }
+.printer-modal .form-message { margin: 0 0 12px; }
+.printer-modal .addon-option b { font-size: 12px; font-weight: 650; }
 .pay-field { display: grid; gap: 6px; margin-top: 12px; color: #5e4638; font-size: 13px; font-weight: 600; }
 .addon-modal { width: min(460px, 100%); }
 .addon-modal .modal-head { margin-bottom: 16px; }
@@ -173,7 +184,7 @@ input:focus, textarea:focus, select:focus { border-color: #b6763c; box-shadow: 0
 .nav-switch span { width: 16px; height: 16px; transition: transform .28s cubic-bezier(.2,.8,.2,1), background .25s ease; }
 .nav-switch.on { background: #f0c27a; }
 .nav-switch.on span { transform: translateX(16px); background: #3a1c0e; }
-@media (max-width: 700px) { .account-fields, .password-grid { grid-template-columns: 1fr; } .password-grid .full-field { grid-column: auto; } .settings-actions .primary-btn { width: 100%; } }
+@media (max-width: 700px) { .account-fields, .password-grid { grid-template-columns: 1fr; } .password-grid .full-field { grid-column: auto; } .settings-actions .primary-btn, .printer-actions .primary-btn, .printer-actions .secondary-btn { width: 100%; } }
 
 .best-seller { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; padding: 14px; border: 1px solid #ead3b8; border-radius: 12px; background: linear-gradient(110deg, #fff8ef, #f6e4cf); }
 .best-seller .product-thumb { width: 52px; height: 52px; flex: 0 0 52px; border-radius: 12px; overflow: hidden; }
@@ -201,6 +212,8 @@ html.dark .page-intro h2, html.dark .topbar-title h1, html.dark .section-heading
 html.dark .muted, html.dark .stat-card span, html.dark .stat-card small, html.dark .quick-actions small, html.dark .mini-row small, html.dark .sale-row small, html.dark td, html.dark td small, html.dark .product-info small, html.dark .cart-row small, html.dark .empty-state, html.dark label, html.dark .pay-field, html.dark th, html.dark .optional, html.dark .bar-group small, html.dark .order-summary > div { color: #c4b0a2; }
 html.dark .eyebrow { color: #e0b07a; }
 html.dark .account-divider { background: #3a2a22; }
+html.dark .printer-status { color: #f7efe8; }
+html.dark .printer-dot { background: #6d584c; }
 html.dark .change-line { color: #f7efe8; }
 html.dark .change-line strong { color: #8dcea8; }
 html.dark .change-line.short strong { color: #f0b0a0; }
