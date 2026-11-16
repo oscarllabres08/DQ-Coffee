@@ -12,12 +12,18 @@ export type SaleReceipt = {
 const WIDTH = 32;
 
 type PrinterEndpoint = { direction: string; type: string; endpointNumber: number };
+type PrinterInterface = { interfaceNumber: number; alternates: { endpoints: PrinterEndpoint[] }[] };
+type PrinterConfiguration = { configurationValue: number; interfaces: PrinterInterface[] };
 type PrinterDevice = {
   opened: boolean;
+  vendorId?: number;
+  productId?: number;
   productName?: string | null;
   manufacturerName?: string | null;
-  configuration: { interfaces: { interfaceNumber: number; alternates: { endpoints: PrinterEndpoint[] }[] }[] } | null;
+  configuration: PrinterConfiguration | null;
+  configurations?: PrinterConfiguration[];
   open: () => Promise<void>;
+  close?: () => Promise<void>;
   selectConfiguration: (value: number) => Promise<void>;
   claimInterface: (face: number) => Promise<void>;
   releaseInterface: (face: number) => Promise<void>;
@@ -33,6 +39,7 @@ export type PrinterLink = { kind: 'usb' | 'serial'; name: string };
 export type PrintOutcome = 'printed' | 'unavailable' | 'failed';
 
 const PRINTER_KEY = 'dq-receipt-printer';
+const PRINTER_USB_KEY = 'dq-receipt-printer-usb';
 let usbDevice: PrinterDevice | null = null;
 let serialPort: PrinterPort | null = null;
 let lastPrintError = '';
@@ -63,17 +70,67 @@ export function printerProblem() {
 
 function connectError(error: unknown, kind: 'usb' | 'serial') {
   const name = error instanceof DOMException ? error.name : '';
-  if (name === 'NotFoundError') return 'No printer was selected.';
+  if (name === 'NotFoundError') return 'Nothing was chosen in the Chrome list. Tap Connect USB printer again, then select POS-58. Do not close the list without choosing it.';
   if (name === 'NotAllowedError' || name === 'SecurityError') return 'Chrome blocked the printer. Allow the prompt, then try again.';
   if (kind === 'serial') return 'Could not open the serial printer. Plug it in and choose its COM port.';
   return 'Could not open the USB printer. Plug it in and choose it from the Chrome list.';
 }
 
 function sendError(error: unknown) {
+  const name = error instanceof DOMException ? error.name : '';
   const message = error instanceof Error ? error.message : '';
-  if (/claim|access denied|security|busy|in use/i.test(message)) return 'Windows is holding this printer. Remove it from Windows Settings, under Printers, then connect it here again.';
-  if (/not found|disconnect|network/i.test(message)) return 'The printer is not responding. Check the power and the cable.';
-  return 'The receipt printer did not respond. Check that it is on and has paper.';
+  if (name === 'SecurityError' || name === 'AccessDeniedError' || /claim|access denied|security|busy|in use|unable to claim/i.test(message)) {
+    return 'Windows is still using this printer. Open Windows Settings, then Printers, remove POS-58, unplug the USB cable for 5 seconds, plug it back in, then tap Forget printer here and connect again.';
+  }
+  if (name === 'NetworkError' || /not found|disconnect|network|device lost/i.test(message)) return 'The printer disconnected. Check power, paper, and the USB cable.';
+  if (/configure|configuration|output|writable/i.test(message)) return message;
+  return 'The receipt printer did not respond. Make sure it is on, has paper, and POS-58 is removed from Windows Printers.';
+}
+
+type PrinterUsbRef = { vendorId: number; productId: number };
+
+function readUsbRef(): PrinterUsbRef | null {
+  try {
+    const raw = localStorage.getItem(PRINTER_USB_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PrinterUsbRef;
+    return typeof parsed.vendorId === 'number' && typeof parsed.productId === 'number' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function rememberUsb(device: PrinterDevice) {
+  if (device.vendorId == null || device.productId == null) return;
+  localStorage.setItem(PRINTER_USB_KEY, JSON.stringify({ vendorId: device.vendorId, productId: device.productId }));
+}
+
+function usbOutput(config: PrinterConfiguration) {
+  for (const face of config.interfaces) {
+    for (const alt of face.alternates) {
+      const endpoint = alt.endpoints.find(item => item.direction === 'out' && (item.type === 'bulk' || item.type === 'interrupt'));
+      if (!endpoint) continue;
+      return { interfaceNumber: face.interfaceNumber, endpoint: endpoint.endpointNumber };
+    }
+  }
+  return null;
+}
+
+function deviceLooksLikePrinter(device: PrinterDevice) {
+  const name = deviceName(device).toLowerCase();
+  if (/pos|58|receipt|thermal|printer|xprinter|gprinter|rongta|epson tm|star/i.test(name)) return true;
+  const config = device.configuration ?? device.configurations?.[0];
+  return Boolean(config && usbOutput(config));
+}
+
+function pickUsbDevice(devices: PrinterDevice[]) {
+  if (!devices.length) return null;
+  const ref = readUsbRef();
+  if (ref) {
+    const matched = devices.find(device => device.vendorId === ref.vendorId && device.productId === ref.productId);
+    if (matched) return matched;
+  }
+  return devices.find(device => deviceLooksLikePrinter(device)) ?? devices[0];
 }
 
 const amount = (value: number) => value.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -206,10 +263,11 @@ export async function refreshPrinter(): Promise<PrinterLink | null> {
     usbDevice = null;
     return { kind: 'serial', name: 'Serial receipt printer' };
   }
-  if (devices[0]) {
-    usbDevice = devices[0];
+  const picked = pickUsbDevice(devices);
+  if (picked) {
+    usbDevice = picked;
     serialPort = null;
-    return { kind: 'usb', name: deviceName(devices[0]) };
+    return { kind: 'usb', name: deviceName(picked) };
   }
   usbDevice = null;
   serialPort = null;
@@ -218,6 +276,12 @@ export async function refreshPrinter(): Promise<PrinterLink | null> {
 
 export function warmUpPrinter() {
   return refreshPrinter().then(() => undefined);
+}
+
+export async function ensurePrinter(kind: 'usb' | 'serial') {
+  const linked = await refreshPrinter();
+  if (linked?.kind === kind) return linked;
+  return connectPrinter(kind);
 }
 
 export async function connectPrinter(kind: 'usb' | 'serial'): Promise<PrinterLink> {
@@ -230,6 +294,8 @@ export async function connectPrinter(kind: 'usb' | 'serial'): Promise<PrinterLin
       usbDevice = device;
       serialPort = null;
       remember('usb');
+      rememberUsb(device);
+      await probePrinter();
       return { kind: 'usb', name: deviceName(device) };
     }
     const serial = serialApi();
@@ -238,6 +304,7 @@ export async function connectPrinter(kind: 'usb' | 'serial'): Promise<PrinterLin
     serialPort = port;
     usbDevice = null;
     remember('serial');
+    await probePrinter();
     return { kind: 'serial', name: 'Serial receipt printer' };
   } catch (error) {
     if (error instanceof Error && !(error instanceof DOMException)) throw error;
@@ -254,6 +321,52 @@ export async function forgetPrinter() {
   usbDevice = null;
   serialPort = null;
   localStorage.removeItem(PRINTER_KEY);
+  localStorage.removeItem(PRINTER_USB_KEY);
+}
+
+async function openUsb(device: PrinterDevice) {
+  if (device.opened && device.close) {
+    try { await device.close(); } catch { /* already closed */ }
+  }
+  await device.open();
+  if (device.configuration !== null) return;
+  const values = [...new Set([...(device.configurations?.map(entry => entry.configurationValue) ?? []), 1, 0])];
+  let ready = false;
+  for (const value of values) {
+    try {
+      await device.selectConfiguration(value);
+      ready = true;
+      break;
+    } catch { /* try the next configuration */ }
+  }
+  if (!ready || !device.configuration) throw new Error('Could not configure the USB printer.');
+}
+
+export async function probePrinter() {
+  if (!usbDevice && !serialPort) await refreshPrinter();
+  try {
+    if (usbDevice) {
+      await openUsb(usbDevice);
+      const output = usbDevice.configuration ? usbOutput(usbDevice.configuration) : null;
+      if (!output) throw new Error('Printer has no USB output.');
+      await usbDevice.claimInterface(output.interfaceNumber);
+      try {
+        const tick = new Uint8Array([0x1b, 0x40]);
+        const result = await usbDevice.transferOut(output.endpoint, tick);
+        if (result.status !== 'ok') throw new Error('Printer rejected the test.');
+      } finally {
+        try { await usbDevice.releaseInterface(output.interfaceNumber); } catch { /* already released */ }
+      }
+      return;
+    }
+    if (serialPort) {
+      await printSerial(serialPort, new Uint8Array([0x1b, 0x40]));
+      return;
+    }
+    throw new Error('Connect the receipt printer first.');
+  } catch (error) {
+  throw new Error(sendError(error));
+  }
 }
 
 export function sampleReceipt(): SaleReceipt {
@@ -269,25 +382,15 @@ export function sampleReceipt(): SaleReceipt {
 }
 
 async function printUsb(device: PrinterDevice, payload: Uint8Array) {
-  if (!device.opened) await device.open();
-  if (device.configuration === null) await device.selectConfiguration(1);
+  await openUsb(device);
   const config = device.configuration;
   if (!config) throw new Error('Printer has no configuration.');
-  let output: { interfaceNumber: number; endpoint: number } | null = null;
-  for (const face of config.interfaces) {
-    for (const alt of face.alternates) {
-      const endpoint = alt.endpoints.find(item => item.direction === 'out' && item.type === 'bulk');
-      if (!endpoint) continue;
-      output = { interfaceNumber: face.interfaceNumber, endpoint: endpoint.endpointNumber };
-      break;
-    }
-    if (output) break;
-  }
-  if (!output) throw new Error('Printer has no output.');
+  const output = usbOutput(config);
+  if (!output) throw new Error('Printer has no USB output.');
   await device.claimInterface(output.interfaceNumber);
   try {
-    for (let index = 0; index < payload.length; index += 512) {
-      const result = await device.transferOut(output.endpoint, payload.subarray(index, index + 512));
+    for (let index = 0; index < payload.length; index += 64) {
+      const result = await device.transferOut(output.endpoint, payload.subarray(index, index + 64));
       if (result.status !== 'ok') throw new Error('Printer rejected the receipt.');
     }
   } finally {
