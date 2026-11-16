@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 import { downloadSalesSheet } from '@/lib/salesSheet';
-import { connectPrinter, ensurePrinter, forgetPrinter, printReceiptDialog, printSaleReceipt, printerProblem, printerSupport, refreshPrinter, sampleReceipt, warmUpPrinter, type PrinterLink, type SaleReceipt } from '@/lib/receiptPrinter';
+import { connectPrinter, ensurePrinter, forgetPrinter, printReceiptDialog, printSaleReceipt, printerProblem, printerRemembered, printerSupport, refreshPrinter, sampleReceipt, warmUpPrinter, type PrinterLink, type SaleReceipt } from '@/lib/receiptPrinter';
 import { ensureMenu } from '@/data/menuSeed';
 import { Banknote, BarChart3, Box, Calendar, Car, ChevronDown, Coffee, CreditCard, Download, Droplets, Eye, EyeOff, Home, ImagePlus, LayoutDashboard, Lock, LogOut, Menu, Moon, Package, Pencil, Plus, Printer, Receipt, Search, Settings, ShoppingBag, Smartphone, Sun, Tag, Trash2, TrendingUp, Trophy, UserRound, Users, Wifi, Wrench, X, Zap, ChevronRight } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
@@ -626,17 +626,25 @@ function PrinterPrompt({ mode, note, busy, onClose, onDialog, onRetry, onConnect
 }
 function ReceiptPrinterSettings() {
   const [link, setLink] = useState<PrinterLink | null>(null);
+  const [remembered, setRemembered] = useState(false);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState<'usb' | 'serial' | 'test' | 'forget' | ''>('');
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
   const support = printerSupport();
-  useEffect(() => { let live = true; refreshPrinter().then(next => { if (live) { setLink(next); setReady(true); } }); return () => { live = false; }; }, []);
+  const loadPrinter = async () => {
+    const [next, saved] = await Promise.all([refreshPrinter(), printerRemembered()]);
+    setLink(next);
+    setRemembered(saved);
+    setReady(true);
+  };
+  useEffect(() => { let live = true; loadPrinter().then(() => { if (!live) return; }); return () => { live = false; }; }, []);
   const connect = async (kind: 'usb' | 'serial') => {
     setBusy(kind);
     setMessage(null);
     try {
       const next = await connectPrinter(kind);
       setLink(next);
+      setRemembered(true);
       setMessage({ tone: 'ok', text: `${next.name} is ready. Completed sales will print on their own.` });
     } catch (error) {
       setMessage({ tone: 'error', text: error instanceof Error ? error.message : 'Could not connect the printer.' });
@@ -655,20 +663,21 @@ function ReceiptPrinterSettings() {
     setMessage(null);
     await forgetPrinter();
     setLink(null);
+    setRemembered(false);
     setBusy('');
-    setMessage({ tone: 'ok', text: 'Receipt printer removed. Connect it again before the next sale.' });
+    setMessage({ tone: 'ok', text: 'Saved printer cleared. Remove POS-58 from Windows Printers if needed, then tap Connect USB printer.' });
   };
   return <div className="printer-block">
     <div className="settings-panel-head"><Printer size={15} /><h3>Receipt printer</h3></div>
-    <p className="muted printer-help">Connect the 58mm printer once in Chrome. After that, every completed sale prints on its own. If it says connected but nothing prints, remove <strong>POS-58</strong> from Windows Printers first, then connect here again.</p>
-    <div className="printer-status"><span className={link ? 'printer-dot on' : 'printer-dot'} />{!ready ? 'Checking printer...' : link ? `Connected · ${link.name}` : 'Not connected'}</div>
+    <p className="muted printer-help">Connect the 58mm printer once in Chrome. After that, every completed sale prints on its own. If Windows is holding the printer, remove <strong>POS-58</strong> in Windows Settings, then tap <strong>Forget printer</strong> here and connect again.</p>
+    <div className="printer-status"><span className={link ? 'printer-dot on' : 'printer-dot'} />{!ready ? 'Checking printer...' : link ? `Connected · ${link.name}` : remembered ? 'Saved in Chrome · not ready to print' : 'Not connected'}</div>
     {(!support.usb && !support.serial) && <div className="form-message">Open DQ-Cafe in Chrome on the shop computer to connect the receipt printer.</div>}
     {message && <div className={message.tone === 'ok' ? 'success-message' : 'form-message'}>{message.text}</div>}
     <div className="printer-actions">
       <button type="button" className="primary-btn" disabled={Boolean(busy) || !support.usb} onClick={() => connect('usb')}>{busy === 'usb' ? 'Connecting...' : link?.kind === 'usb' ? 'Change USB printer' : 'Connect USB printer'}</button>
       <button type="button" className="secondary-btn" disabled={Boolean(busy) || !support.serial} onClick={() => connect('serial')}>{busy === 'serial' ? 'Connecting...' : link?.kind === 'serial' ? 'Change serial printer' : 'Serial / COM port'}</button>
       {link && <button type="button" className="secondary-btn" disabled={Boolean(busy)} onClick={testPrint}>{busy === 'test' ? 'Printing...' : 'Test receipt'}</button>}
-      {link && <button type="button" className="secondary-btn" disabled={Boolean(busy)} onClick={forget}>{busy === 'forget' ? 'Removing...' : 'Forget printer'}</button>}
+      {(link || remembered) && <button type="button" className="secondary-btn" disabled={Boolean(busy)} onClick={forget}>{busy === 'forget' ? 'Removing...' : 'Forget printer'}</button>}
     </div>
   </div>;
 }

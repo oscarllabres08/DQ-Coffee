@@ -278,6 +278,15 @@ export function warmUpPrinter() {
   return refreshPrinter().then(() => undefined);
 }
 
+export async function printerRemembered() {
+  if (localStorage.getItem(PRINTER_KEY) || localStorage.getItem(PRINTER_USB_KEY)) return true;
+  const usb = usbApi();
+  const serial = serialApi();
+  const devices = usb ? await usb.getDevices().catch(() => [] as PrinterDevice[]) : [];
+  const ports = serial ? await serial.getPorts().catch(() => [] as PrinterPort[]) : [];
+  return devices.length > 0 || ports.length > 0;
+}
+
 export async function ensurePrinter(kind: 'usb' | 'serial') {
   const linked = await refreshPrinter();
   if (linked?.kind === kind) return linked;
