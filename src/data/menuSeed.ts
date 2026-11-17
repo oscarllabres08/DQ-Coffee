@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase';
 
 type MenuGroup = 'Food' | 'Beverages';
-type Subcategory = 'Coffee' | 'Non Coffee' | 'Matcha Series' | 'Frappe' | 'Sparkling Series' | 'Tea Infusion' | 'Specialty hot coffee' | 'Breakfast' | 'Pasta' | 'Snacks' | 'Waffles' | 'Pastries' | 'Cakes' | 'Korean Dish' | 'Fries';
+type Subcategory = 'Coffee' | 'Non Coffee' | 'Matcha Series' | 'Frappe' | 'Sparkling Series' | 'Tea Infusion' | 'Specialty hot coffee' | 'Breakfast' | 'Sandwich' | 'Salad' | 'Soup' | 'Pasta' | 'Snacks' | 'Meal' | 'Waffles' | 'Pastries' | 'Cakes' | 'Korean Dish' | 'Fries';
 
 type MenuItem = {
   name: string;
@@ -68,6 +68,7 @@ export const menuSeed: MenuItem[] = [
   ...frappe('Berde', 175, 190),
   ...frappe('Strawberries & Cream', 175, 190),
   ...frappe('Cookie Monster', 175, 190),
+  ...frappe('Choco Blast', 175, 190),
   ...frappe('Double Fudge Mocha', 190, 220),
   ...frappe('Salted Vanilla', 170, 190),
   ...frappe('Nutella Oreo Milkshake', 220, 240),
@@ -84,7 +85,10 @@ export const menuSeed: MenuItem[] = [
   iced('Honey Lemon Tea', 'Tea Infusion', 160),
 
   { name: 'Espresso', category: 'Beverages', subcategory: 'Specialty hot coffee', temperature: 'Hot', size: '16 oz', price: 140 },
+  { name: 'Espresso Single', category: 'Beverages', subcategory: 'Specialty hot coffee', temperature: 'Hot', size: '16 oz', price: 110 },
+  { name: 'Espresso Double', category: 'Beverages', subcategory: 'Specialty hot coffee', temperature: 'Hot', size: '16 oz', price: 120 },
   { name: 'Cappuccino', category: 'Beverages', subcategory: 'Specialty hot coffee', temperature: 'Hot', size: '16 oz', price: 150 },
+  { name: 'Cortado', category: 'Beverages', subcategory: 'Specialty hot coffee', temperature: 'Hot', size: '16 oz', price: 150 },
   { name: 'Flat White', category: 'Beverages', subcategory: 'Specialty hot coffee', temperature: 'Hot', size: '16 oz', price: 150 },
 
   food('Hungarian Silog', 'Breakfast', 199),
@@ -93,14 +97,30 @@ export const menuSeed: MenuItem[] = [
   food('Sisig w/ Egg', 'Breakfast', 249),
   food('Chicken Fillet', 'Breakfast', 219),
 
+  food('Club House', 'Sandwich', 200),
+  food('Egg Mayo', 'Sandwich', 150),
+  food('Tuna Melt', 'Sandwich', 180),
+
+  food('Kani Salad', 'Salad', 230),
+  food('Caesar Salad', 'Salad', 200),
+
+  food('Creamy Mushroom Soup', 'Soup', 120),
+  food('Crab Corn Soup', 'Soup', 150),
+
   food('Creamy Chicken Alfredo', 'Pasta', 289),
-  food('Aglio Pasta', 'Pasta', 289),
+  food('Aligue Pasta', 'Pasta', 289),
   food('Pesto Pasta', 'Pasta', 289),
 
   food('El Churros', 'Snacks', 75, '6 pcs'),
-  food('El Churros', 'Snacks', 130, '12 pcs'),
+  food('El Churros', 'Snacks', 150, '12 pcs'),
   food('Beef Nachos', 'Snacks', 200),
   food('Chicken Poppers', 'Snacks', 160),
+
+  food('Crispy Creamy Chicken', 'Meal', 200),
+  food('Sausage w/ Egg', 'Meal', 150),
+  food('Spam w/ Egg', 'Meal', 150),
+  food('Corn Beef w/ Egg', 'Meal', 150),
+  food('Salmon Bites', 'Meal', 230),
 
   food('Strawberry & Cream Waffle', 'Waffles', 160),
   food('Biscoff Crunch Waffle', 'Waffles', 170),
@@ -115,6 +135,14 @@ export const menuSeed: MenuItem[] = [
   food('Sour Cream Fries', 'Fries', 150),
   food('Triple Cheese Fries', 'Fries', 150),
 ];
+
+const additionNames = new Set([
+  'Choco Blast', 'Cortado', 'Espresso Single', 'Espresso Double',
+  'Club House', 'Egg Mayo', 'Tuna Melt', 'Kani Salad', 'Caesar Salad',
+  'Creamy Mushroom Soup', 'Crab Corn Soup', 'Aligue Pasta',
+  'Crispy Creamy Chicken', 'Sausage w/ Egg', 'Spam w/ Egg', 'Corn Beef w/ Egg', 'Salmon Bites',
+]);
+const menuAdditions = menuSeed.filter(item => additionNames.has(item.name));
 
 const itemKey = (item: { name: string; temperature: string; size: string }) => `${item.name}|${item.temperature}|${item.size}`;
 
@@ -135,16 +163,35 @@ async function removeDuplicates(rows: { id: string; name: string; temperature: s
 
 let syncing: Promise<void> | null = null;
 
+async function applyMenuAdditions(rows: { id: string; name: string; temperature: string; size: string; price: number }[]) {
+  const names = new Set(rows.map(row => row.name));
+  const aglio = rows.find(row => row.name === 'Aglio Pasta');
+  if (aglio && !names.has('Aligue Pasta')) {
+    const { error } = await supabase.from('products').update({ name: 'Aligue Pasta' }).eq('id', aglio.id);
+    if (!error) aglio.name = 'Aligue Pasta';
+  }
+  const churros = rows.find(row => row.name === 'El Churros' && row.size === '12 pcs' && Number(row.price) === 130);
+  if (churros) await supabase.from('products').update({ price: 150 }).eq('id', churros.id);
+
+  const keys = new Set(rows.map(itemKey));
+  const missing = menuAdditions.filter(item => !keys.has(itemKey(item)));
+  if (!missing.length) return;
+  const payload = missing.map(item => ({ ...item, description: null, image_url: null, quantity: STARTING_STOCK, available: true }));
+  const { error } = await supabase.from('products').insert(payload);
+  if (!error) return;
+  for (const row of payload) await supabase.from('products').insert(row);
+}
+
 async function syncMenu() {
-  const { data, error } = await supabase.from('products').select('id, name, temperature, size, image_url').order('created_at', { ascending: true });
+  const { data, error } = await supabase.from('products').select('id, name, temperature, size, image_url, price').order('created_at', { ascending: true });
   if (error || !data) return;
-  // A shop that already has a menu keeps deletions. Refilling "missing" seed items
-  // put removed foods and drinks back on every refresh, without their photos.
+  // A shop that already has a menu keeps deletions. Only the latest additions are filled in.
   if (data.length > 0) {
     await removeDuplicates(data);
+    await applyMenuAdditions(data);
     return;
   }
-  const rows = menuSeed.map(item => ({ ...item, description: null, image_url: null, quantity: STARTING_STOCK }));
+  const rows = menuSeed.map(item => ({ ...item, description: null, image_url: null, quantity: STARTING_STOCK, available: true }));
   const { error: insertError } = await supabase.from('products').insert(rows);
   if (!insertError) return;
   for (const row of rows) await supabase.from('products').insert(row);

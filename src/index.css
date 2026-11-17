@@ -568,7 +568,7 @@ body.nav-lock, body.sheet-lock { overflow: hidden; }
   .inventory-panel td:first-child { grid-column: 1 / -1; }
   .inventory-panel td:nth-child(2), .inventory-panel td:nth-child(3), .inventory-panel td:nth-child(4) { display: flex; justify-content: space-between; gap: 8px; grid-column: 1 / -1; font-size: 12px; }
   .inventory-panel td:nth-child(2)::before, .inventory-panel td:nth-child(3)::before, .inventory-panel td:nth-child(4)::before { content: attr(data-label); flex: 0 0 auto; font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: #8a7568; }
-  .inventory-panel td:nth-child(5) { grid-column: 1; align-self: center; }
+  .inventory-panel td:nth-child(5) { grid-column: 1 / -1; align-self: center; }
   .inventory-panel td:last-child { grid-column: 2; justify-self: end; }
   .badge { padding: 4px 8px; font-size: 11px; }
   .auth-shell { min-height: 100dvh; height: auto; align-content: start; }
@@ -700,6 +700,12 @@ html.dark .auth-shell .form-message { background: #fff0ea; color: #9b402c; }
 .danger-btn { border: 0; border-radius: 8px; padding: 14px 18px; background: #9b3b2c; color: #fff8f4; font-weight: 500; font-size: 15px; }
 .danger-btn:hover { background: #7d2e22; }
 .danger-btn:disabled { opacity: .6; cursor: not-allowed; }
+.status-cell { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.availability-btn { border: 1px solid #b7dfc6; background: #e4f3e9; color: #1f7a4d; border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 700; }
+.availability-btn.off { border-color: #f0c2ba; background: #fde7e2; color: #ac4439; }
+.availability-btn:disabled { opacity: .6; cursor: wait; }
+html.dark .availability-btn { background: #1c3328; border-color: #2c5a40; color: #8dcea8; }
+html.dark .availability-btn.off { background: #3a221c; border-color: #6a3a32; color: #f0b0a0; }
 html.dark .danger-btn { background: #a84836; color: #fff8f4; }
 html.dark .danger-btn:hover { background: #c45a46; }
 .expense-save-actions { justify-content: stretch; }

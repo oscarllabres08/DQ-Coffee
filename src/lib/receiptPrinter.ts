@@ -10,6 +10,12 @@ export type SaleReceipt = {
 };
 
 const WIDTH = 32;
+const STORE_ADDRESS = '14 Provincial Road San Ramon Dinalupihan Bataan, 2110';
+const RECEIPT_LOGO = '/logoreceipt.png';
+const LOGO_PRINT_WIDTH = 280;
+const receiptDash = () => '-'.repeat(WIDTH);
+
+let logoRasterCache: Uint8Array | null | undefined;
 
 type PrinterEndpoint = { direction: string; type: string; endpointNumber: number };
 type PrinterInterface = { interfaceNumber: number; alternates: { endpoints: PrinterEndpoint[] }[] };
@@ -179,13 +185,68 @@ function itemLines(item: ReceiptItem) {
   return lines;
 }
 
+function loadReceiptLogo(): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Could not load the receipt logo.'));
+    image.src = RECEIPT_LOGO;
+  });
+}
+
+function escPosRaster(width: number, height: number, rgba: Uint8ClampedArray) {
+  const bytesPerRow = Math.ceil(width / 8);
+  const raster = new Uint8Array(bytesPerRow * height);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      const r = rgba[i];
+      const g = rgba[i + 1];
+      const b = rgba[i + 2];
+      const alpha = rgba[i + 3] / 255;
+      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+      const ink = alpha > 0.2 && lum > 24 && lum < 230;
+      if (ink) raster[y * bytesPerRow + (x >> 3)] |= 0x80 >> (x & 7);
+    }
+  }
+  const header = new Uint8Array([0x1d, 0x76, 0x30, 0x00, bytesPerRow & 0xff, (bytesPerRow >> 8) & 0xff, height & 0xff, (height >> 8) & 0xff]);
+  const out = new Uint8Array(header.length + raster.length);
+  out.set(header);
+  out.set(raster, header.length);
+  return out;
+}
+
+export async function loadReceiptLogoRaster() {
+  if (logoRasterCache !== undefined) return logoRasterCache;
+  if (typeof document === 'undefined') { logoRasterCache = null; return null; }
+  try {
+    const image = await loadReceiptLogo();
+    const scale = Math.min(1, LOGO_PRINT_WIDTH / image.width);
+    const width = Math.max(1, Math.round(image.width * scale));
+    const height = Math.max(1, Math.round(image.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) { logoRasterCache = null; return null; }
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(image, 0, 0, width, height);
+    logoRasterCache = escPosRaster(width, height, ctx.getImageData(0, 0, width, height).data);
+    return logoRasterCache;
+  } catch {
+    logoRasterCache = null;
+    return null;
+  }
+}
+
 function receiptLines(receipt: SaleReceipt) {
-  const lines = ['DQ-Cafe', 'Artisan coffee & cakes', whenLabel(receipt.when), `#${receipt.orderNo}`, '-'.repeat(WIDTH)];
+  const lines = ['Artisan coffee & cakes', ...wrap(STORE_ADDRESS, WIDTH), whenLabel(receipt.when), `#${receipt.orderNo}`, receiptDash()];
   receipt.items.forEach(item => lines.push(...itemLines(item)));
-  lines.push('-'.repeat(WIDTH), columns('TOTAL', amount(receipt.total)));
+  lines.push(receiptDash(), columns('TOTAL', amount(receipt.total)));
   if (receipt.payment === 'Cash') lines.push(columns('Cash', amount(receipt.received)), columns('Change', amount(receipt.change)));
   else lines.push(columns(receipt.payment, amount(receipt.total)), columns('Received', amount(receipt.received)), columns('Change', amount(receipt.change)));
-  lines.push('-'.repeat(WIDTH), 'Thank you!', 'Please come again');
+  lines.push(receiptDash(), 'Thank you!', 'Please come again');
   return lines;
 }
 
@@ -197,26 +258,29 @@ function concat(parts: Uint8Array[]) {
   return bytes;
 }
 
-function encodeReceipt(receipt: SaleReceipt) {
+async function encodeReceipt(receipt: SaleReceipt) {
   const text = new TextEncoder();
   const line = (value: string) => text.encode(`${ascii(value)}\n`);
   const cmd = (...values: number[]) => new Uint8Array(values);
+  const logo = await loadReceiptLogoRaster();
   const lines = receiptLines(receipt);
+  const dash = receiptDash();
   const footerAt = lines.length - 2;
-  const header = lines.slice(0, 4);
-  const items = lines.slice(4, footerAt);
+  const bodyStart = lines.indexOf(dash);
+  const header = lines.slice(0, bodyStart);
+  const items = lines.slice(bodyStart, footerAt);
   const footer = lines.slice(footerAt);
-  return concat([
+  const head: Uint8Array[] = [
     cmd(0x1b, 0x40),
     cmd(0x1b, 0x74, 0x00),
     cmd(0x1b, 0x4d, 0x00),
     cmd(0x1b, 0x61, 0x01),
-    cmd(0x1b, 0x45, 0x01),
-    cmd(0x1d, 0x21, 0x11),
-    line(header[0] || 'DQ-Cafe'),
-    cmd(0x1d, 0x21, 0x00),
-    cmd(0x1b, 0x45, 0x00),
-    ...header.slice(1).map(line),
+  ];
+  if (logo) head.push(logo, cmd(0x1b, 0x64, 0x02));
+  else head.push(cmd(0x1b, 0x45, 0x01), cmd(0x1d, 0x21, 0x11), line('DQ-Cafe'), cmd(0x1d, 0x21, 0x00), cmd(0x1b, 0x45, 0x00));
+  return concat([
+    ...head,
+    ...header.map(line),
     cmd(0x1b, 0x61, 0x00),
     ...items.map(line),
     cmd(0x1b, 0x61, 0x01),
@@ -228,10 +292,12 @@ function encodeReceipt(receipt: SaleReceipt) {
 
 export function receiptHtml(receipt: SaleReceipt) {
   const lines = receiptLines(receipt);
+  const dash = receiptDash();
   const footerAt = lines.length - 2;
+  const bodyStart = lines.indexOf(dash);
   const rows = lines.map((entry, index) => {
-    if (entry === '-'.repeat(WIDTH)) return '<hr>';
-    const role = index === 0 ? 'title' : index < 4 || index >= footerAt ? 'center' : '';
+    if (entry === dash) return '<hr>';
+    const role = index < bodyStart || index >= footerAt ? 'center' : '';
     return `<div${role ? ` class="${role}"` : ''}>${escapeHtml(entry) || '&nbsp;'}</div>`;
   }).join('');
   return `<!doctype html><html><head><meta charset="utf-8"><title>DQ-Cafe receipt</title><style>
@@ -240,11 +306,11 @@ export function receiptHtml(receipt: SaleReceipt) {
     html, body { margin: 0; padding: 0; width: 58mm; background: #fff; color: #000; color-scheme: light; }
     body { font: 10px/1.25 'Courier New', ui-monospace, monospace; }
     .ticket { width: 58mm; padding: 2mm 2mm 4mm; }
-    .title { font-size: 15px; font-weight: 700; text-align: center; line-height: 1.1; margin-bottom: 1mm; }
+    .receipt-logo { display: block; width: 48mm; max-width: 100%; height: auto; margin: 0 auto 2mm; object-fit: contain; }
     .center { text-align: center; }
     hr { border: 0; border-top: 1px dashed #000; margin: 1.5mm 0; }
     div { white-space: pre; }
-  </style></head><body><main class="ticket">${rows}</main></body></html>`;
+  </style></head><body><main class="ticket"><img class="receipt-logo" src="${escapeHtml(RECEIPT_LOGO)}" alt="DQ-Cafe" />${rows}</main></body></html>`;
 }
 
 function escapeHtml(value: string) {
@@ -275,7 +341,7 @@ export async function refreshPrinter(): Promise<PrinterLink | null> {
 }
 
 export function warmUpPrinter() {
-  return refreshPrinter().then(() => undefined);
+  return Promise.all([refreshPrinter(), loadReceiptLogoRaster()]).then(() => undefined);
 }
 
 export async function printerRemembered() {
@@ -435,7 +501,7 @@ export function printReceiptDialog(receipt: SaleReceipt) {
 export async function printSaleReceipt(receipt: SaleReceipt): Promise<PrintOutcome> {
   lastPrintError = '';
   if (!usbDevice && !serialPort) await refreshPrinter();
-  const payload = encodeReceipt(receipt);
+  const payload = await encodeReceipt(receipt);
   try {
     if (usbDevice) { await printUsb(usbDevice, payload); return 'printed'; }
     if (serialPort) { await printSerial(serialPort, payload); return 'printed'; }
