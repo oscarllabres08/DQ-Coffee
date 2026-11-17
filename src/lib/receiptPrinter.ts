@@ -18,11 +18,8 @@ export type SaleReceipt = {
 const WIDTH = 32;
 const STORE_ADDRESS = '14 Provincial Road San Ramon Dinalupihan Bataan, 2110';
 const STORE_PHONE = '(0976) 310 8363';
-const RECEIPT_LOGO = '/logoreceipt.png';
-const LOGO_PRINT_WIDTH = 280;
+const RECEIPT_HEADING = 'DQ Cafe';
 const receiptDash = () => '-'.repeat(WIDTH);
-
-let logoRasterCache: Uint8Array | null | undefined;
 
 type PrinterEndpoint = { direction: string; type: string; endpointNumber: number };
 type PrinterInterface = { interfaceNumber: number; alternates: { endpoints: PrinterEndpoint[] }[] };
@@ -192,97 +189,6 @@ function itemLines(item: ReceiptItem) {
   return lines;
 }
 
-function loadReceiptLogo(): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('Could not load the receipt logo.'));
-    image.src = RECEIPT_LOGO;
-  });
-}
-
-function escPosRaster(width: number, height: number, rgba: Uint8ClampedArray) {
-  const bytesPerRow = Math.ceil(width / 8);
-  const raster = new Uint8Array(bytesPerRow * height);
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const i = (y * width + x) * 4;
-      const r = rgba[i];
-      const g = rgba[i + 1];
-      const b = rgba[i + 2];
-      const alpha = rgba[i + 3] / 255;
-      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-      const ink = alpha > 0.2 && lum > 24 && lum < 230;
-      if (ink) raster[y * bytesPerRow + (x >> 3)] |= 0x80 >> (x & 7);
-    }
-  }
-  const header = new Uint8Array([0x1d, 0x76, 0x30, 0x00, bytesPerRow & 0xff, (bytesPerRow >> 8) & 0xff, height & 0xff, (height >> 8) & 0xff]);
-  const out = new Uint8Array(header.length + raster.length);
-  out.set(header);
-  out.set(raster, header.length);
-  return out;
-}
-
-function logoBounds(image: HTMLImageElement) {
-  const probe = document.createElement('canvas');
-  probe.width = image.width;
-  probe.height = image.height;
-  const ctx = probe.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return { x: 0, y: 0, width: image.width, height: image.height };
-  ctx.drawImage(image, 0, 0);
-  const { data, width, height } = ctx.getImageData(0, 0, image.width, image.height);
-  let minX = width;
-  let minY = height;
-  let maxX = 0;
-  let maxY = 0;
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      if (data[(y * width + x) * 4 + 3] > 20) {
-        if (x < minX) minX = x;
-        if (y < minY) minY = y;
-        if (x > maxX) maxX = x;
-        if (y > maxY) maxY = y;
-      }
-    }
-  }
-  if (maxX < minX) return { x: 0, y: 0, width: image.width, height: image.height };
-  const pad = 12;
-  const x = Math.max(0, minX - pad);
-  const y = Math.max(0, minY - pad);
-  return { x, y, width: Math.min(width - x, maxX - minX + 1 + pad * 2), height: Math.min(height - y, maxY - minY + 1 + pad * 2) };
-}
-
-async function receiptLogoCanvas() {
-  const image = await loadReceiptLogo();
-  const bounds = logoBounds(image);
-  const width = LOGO_PRINT_WIDTH;
-  const height = Math.max(1, Math.round(width * bounds.height / bounds.width));
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return null;
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, width, height);
-  ctx.drawImage(image, bounds.x, bounds.y, bounds.width, bounds.height, 0, 0, width, height);
-  return canvas;
-}
-
-export async function loadReceiptLogoRaster() {
-  if (logoRasterCache !== undefined) return logoRasterCache;
-  if (typeof document === 'undefined') { logoRasterCache = null; return null; }
-  try {
-    const canvas = await receiptLogoCanvas();
-    const ctx = canvas?.getContext('2d', { willReadFrequently: true });
-    if (!canvas || !ctx) { logoRasterCache = null; return null; }
-    logoRasterCache = escPosRaster(canvas.width, canvas.height, ctx.getImageData(0, 0, canvas.width, canvas.height).data);
-    return logoRasterCache;
-  } catch {
-    logoRasterCache = null;
-    return null;
-  }
-}
-
 function receiptLines(receipt: SaleReceipt) {
   const lines = ['Artisan coffee & cakes', ...wrap(STORE_ADDRESS, WIDTH), STORE_PHONE, whenLabel(receipt.when), `#${receipt.orderNo}`, receipt.serviceType, receiptDash()];
   receipt.items.forEach(item => lines.push(...itemLines(item)));
@@ -307,11 +213,10 @@ function concat(parts: Uint8Array[]) {
   return bytes;
 }
 
-async function encodeReceipt(receipt: SaleReceipt) {
+function encodeReceipt(receipt: SaleReceipt) {
   const text = new TextEncoder();
   const line = (value: string) => text.encode(`${ascii(value)}\n`);
   const cmd = (...values: number[]) => new Uint8Array(values);
-  const logo = await loadReceiptLogoRaster();
   const lines = receiptLines(receipt);
   const dash = receiptDash();
   const footerAt = lines.length - 2;
@@ -324,9 +229,13 @@ async function encodeReceipt(receipt: SaleReceipt) {
     cmd(0x1b, 0x74, 0x00),
     cmd(0x1b, 0x4d, 0x00),
     cmd(0x1b, 0x61, 0x01),
+    cmd(0x1b, 0x45, 0x01),
+    cmd(0x1d, 0x21, 0x11),
+    line(RECEIPT_HEADING),
+    cmd(0x1d, 0x21, 0x00),
+    cmd(0x1b, 0x45, 0x00),
+    cmd(0x1b, 0x64, 0x01),
   ];
-  if (logo) head.push(logo, cmd(0x1b, 0x64, 0x02));
-  else head.push(cmd(0x1b, 0x45, 0x01), cmd(0x1d, 0x21, 0x11), line('DQ-Cafe'), cmd(0x1d, 0x21, 0x00), cmd(0x1b, 0x45, 0x00));
   return concat([
     ...head,
     ...header.map(line),
@@ -339,7 +248,7 @@ async function encodeReceipt(receipt: SaleReceipt) {
   ]);
 }
 
-export function receiptHtml(receipt: SaleReceipt, logoSrc = RECEIPT_LOGO) {
+export function receiptHtml(receipt: SaleReceipt) {
   const lines = receiptLines(receipt);
   const dash = receiptDash();
   const footerAt = lines.length - 2;
@@ -355,11 +264,11 @@ export function receiptHtml(receipt: SaleReceipt, logoSrc = RECEIPT_LOGO) {
     html, body { margin: 0; padding: 0; width: 58mm; background: #fff; color: #000; color-scheme: light; }
     body { font: 10px/1.25 'Courier New', ui-monospace, monospace; }
     .ticket { width: 58mm; padding: 2mm 2mm 4mm; }
-    .receipt-logo { display: block; width: 46mm; max-width: 100%; height: auto; margin: 0 auto 2mm; object-fit: contain; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .receipt-brand { text-align: center; font-size: 16px; font-weight: 700; letter-spacing: 0.02em; margin: 0 0 2mm; }
     .center { text-align: center; }
     hr { border: 0; border-top: 1px dashed #000; margin: 1.5mm 0; }
     div { white-space: pre; }
-  </style></head><body><main class="ticket"><img class="receipt-logo" src="${escapeHtml(logoSrc)}" alt="DQ-Cafe" />${rows}</main></body></html>`;
+  </style></head><body><main class="ticket"><div class="receipt-brand">${escapeHtml(RECEIPT_HEADING)}</div>${rows}</main></body></html>`;
 }
 
 function escapeHtml(value: string) {
@@ -390,7 +299,7 @@ export async function refreshPrinter(): Promise<PrinterLink | null> {
 }
 
 export function warmUpPrinter() {
-  return Promise.all([refreshPrinter(), loadReceiptLogoRaster()]).then(() => undefined);
+  return refreshPrinter().then(() => undefined);
 }
 
 export async function printerRemembered() {
@@ -531,14 +440,6 @@ async function printSerial(port: PrinterPort, payload: Uint8Array) {
   finally { writer.releaseLock(); }
 }
 
-async function receiptLogoSrc() {
-  try {
-    const canvas = await receiptLogoCanvas();
-    if (canvas) return canvas.toDataURL('image/png');
-  } catch { /* fall through to the public file */ }
-  return new URL(RECEIPT_LOGO, window.location.href).href;
-}
-
 export function printReceiptDialog(receipt: SaleReceipt) {
   const iframe = document.createElement('iframe');
   iframe.setAttribute('aria-hidden', 'true');
@@ -547,26 +448,19 @@ export function printReceiptDialog(receipt: SaleReceipt) {
   const doc = iframe.contentDocument;
   const win = iframe.contentWindow;
   if (!doc || !win) { iframe.remove(); return false; }
-  void receiptLogoSrc().then(async logoSrc => {
-    if (!iframe.isConnected) return;
-    doc.open();
-    doc.write(receiptHtml(receipt, logoSrc));
-    doc.close();
-    win.onafterprint = () => iframe.remove();
-    const image = doc.querySelector('img.receipt-logo');
-    if (image instanceof HTMLImageElement) {
-      try { await image.decode(); } catch { /* print the text even if the logo cannot decode */ }
-    }
-    win.focus();
-    win.print();
-  });
+  doc.open();
+  doc.write(receiptHtml(receipt));
+  doc.close();
+  win.onafterprint = () => iframe.remove();
+  win.focus();
+  win.print();
   return true;
 }
 
 export async function printSaleReceipt(receipt: SaleReceipt): Promise<PrintOutcome> {
   lastPrintError = '';
   if (!usbDevice && !serialPort) await refreshPrinter();
-  const payload = await encodeReceipt(receipt);
+  const payload = encodeReceipt(receipt);
   try {
     if (usbDevice) { await printUsb(usbDevice, payload); return 'printed'; }
     if (serialPort) { await printSerial(serialPort, payload); return 'printed'; }
