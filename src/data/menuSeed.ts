@@ -139,18 +139,6 @@ export const menuSeed: MenuItem[] = [
   food('Bento Cheese Cake', 'Cakes', 350),
 ];
 
-const additionNames = new Set([
-  'Choco Blast', 'Cortado', 'Espresso Single', 'Espresso Double',
-  'Club House', 'Egg Mayo', 'Tuna Melt', 'Kani Salad', 'Caesar Salad',
-  'Creamy Mushroom Soup', 'Crab Corn Soup', 'Aligue Pasta',
-  'Crispy Creamy Chicken', 'Sausage w/ Egg', 'Spam w/ Egg', 'Corn Beef w/ Egg', 'Salmon Bites',
-  'Customized', 'Bento Cheese Cake',
-]);
-const menuAdditions = [
-  ...menuSeed.filter(item => additionNames.has(item.name)),
-  ...menuSeed.filter(item => (item.name === 'Strawberry Matcha' || item.name === 'Coconut Matcha') && item.temperature === 'Hot'),
-];
-
 const itemKey = (item: { name: string; temperature: string; size: string }) => `${item.name}|${item.temperature}|${item.size}`;
 
 async function removeDuplicates(rows: { id: string; name: string; temperature: string; size: string; image_url: string | null }[]) {
@@ -208,7 +196,7 @@ async function applyPriceAdjustments(rows: { id: string; name: string; temperatu
 
 let syncing: Promise<void> | null = null;
 
-async function applyMenuAdditions(rows: { id: string; name: string; temperature: string; size: string; price: number }[]) {
+async function applyMenuMaintenance(rows: { id: string; name: string; temperature: string; size: string; price: number }[]) {
   const names = new Set(rows.map(row => row.name));
   const aglio = rows.find(row => row.name === 'Aglio Pasta');
   if (aglio && !names.has('Aligue Pasta')) {
@@ -216,29 +204,15 @@ async function applyMenuAdditions(rows: { id: string; name: string; temperature:
     if (!error) aglio.name = 'Aligue Pasta';
   }
   await applyPriceAdjustments(rows);
-
-  const keys = new Set(rows.map(itemKey));
-  const missing = menuAdditions.filter(item => !keys.has(itemKey(item)));
-  if (!missing.length) return;
-  const payload = missing.map(item => ({
-    ...item,
-    description: item.subcategory === 'Customized' ? 'Set price per order in POS or inventory.' : null,
-    image_url: null,
-    quantity: item.subcategory === 'Customized' ? 999 : STARTING_STOCK,
-    available: true,
-  }));
-  const { error } = await supabase.from('products').insert(payload);
-  if (!error) return;
-  for (const row of payload) await supabase.from('products').insert(row);
 }
 
 async function syncMenu() {
   const { data, error } = await supabase.from('products').select('id, name, temperature, size, image_url, price').order('created_at', { ascending: true });
   if (error || !data) return;
-  // A shop that already has a menu keeps deletions. Only the latest additions are filled in.
+  // Existing menu: dedupe and one-time data fixes only. Deletions stay deleted (no auto re-insert).
   if (data.length > 0) {
     await removeDuplicates(data);
-    await applyMenuAdditions(data);
+    await applyMenuMaintenance(data);
     return;
   }
   const rows = menuSeed.map(item => ({ ...item, description: null, image_url: null, quantity: STARTING_STOCK, available: true }));
