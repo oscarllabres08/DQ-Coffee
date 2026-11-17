@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase';
 
 type MenuGroup = 'Food' | 'Beverages';
-type Subcategory = 'Coffee' | 'Non Coffee' | 'Matcha Series' | 'Frappe' | 'Sparkling Series' | 'Tea Infusion' | 'Specialty hot coffee' | 'Breakfast' | 'Sandwich' | 'Salad' | 'Soup' | 'Pasta' | 'Snacks' | 'Meal' | 'Waffles' | 'Pastries' | 'Cakes' | 'Korean Dish' | 'Fries';
+type Subcategory = 'Coffee' | 'Non Coffee' | 'Matcha Series' | 'Frappe' | 'Sparkling Series' | 'Tea Infusion' | 'Specialty hot coffee' | 'Breakfast' | 'Sandwich' | 'Salad' | 'Soup' | 'Pasta' | 'Snacks' | 'Meal' | 'Waffles' | 'Pastries' | 'Cakes' | 'Customized' | 'Korean Dish' | 'Fries';
 
 type MenuItem = {
   name: string;
@@ -34,36 +34,36 @@ const food = (name: string, subcategory: Subcategory, price: number, size: MenuI
 
 export const menuSeed: MenuItem[] = [
   ...drink('Sweet Americano', 'Coffee', 99, 109),
-  ...drink('Cloud Americano', 'Coffee', 119, 129),
-  ...drink('Orange Espresso', 'Coffee', 129, 139),
-  ...drink('Spanish Latte', 'Coffee', 139, 149),
-  ...drink('Seasalt Latte', 'Coffee', 150, 160),
+  ...drink('Cloud Americano', 'Coffee', 130, 140),
+  ...drink('Orange Espresso', 'Coffee', 140, 150),
+  ...drink('Spanish Latte', 'Coffee', 140, 150),
+  ...drink('Seasalt Latte', 'Coffee', 140, 150),
   ...drink('Caramel Macchiato', 'Coffee', 150, 160),
-  ...drink('Biscoff Latte', 'Coffee', 165, 180),
+  ...drink('Biscoff Latte', 'Coffee', 170, 180),
   ...drink('White Mocha', 'Coffee', 150, 160),
-  ...drink('Cafe Latte', 'Coffee', 130, 140),
+  ...drink('Cafe Latte', 'Coffee', 140, 150),
   ...drink('Hazelnut Latte', 'Coffee', 140, 150),
   ...drink('Brown Sugar Shaken Coffee', 'Coffee', 140, 160),
 
   iced('Mango Cloud', 'Non Coffee', 150),
   iced('Strawberry Cloud', 'Non Coffee', 150),
   iced('Berry Cloud', 'Non Coffee', 150),
-  iced('Ube Cloud', 'Non Coffee', 170),
+  iced('Ube Cloud', 'Non Coffee', 150),
   iced('Biscoff Cloud', 'Non Coffee', 170),
   iced('Choco Loco', 'Non Coffee', 150),
   iced('White Chocolate Cloud', 'Non Coffee', 150),
 
-  ...drink('Milky Matcha', 'Matcha Series', 160, 170),
-  ...drink('Strawberry Matcha', 'Matcha Series', null, 170),
-  ...drink('Seasalt Matcha', 'Matcha Series', 165, 180),
-  ...drink('Dirty Matcha', 'Matcha Series', 130, 150),
-  ...drink('Coconut Matcha', 'Matcha Series', null, 180),
+  ...drink('Milky Matcha', 'Matcha Series', 140, 170),
+  ...drink('Strawberry Matcha', 'Matcha Series', 140, 180),
+  ...drink('Seasalt Matcha', 'Matcha Series', 140, 180),
+  ...drink('Dirty Matcha', 'Matcha Series', 140, 150),
+  ...drink('Coconut Matcha', 'Matcha Series', 140, 180),
 
   ...frappe('Oreo Tiramisu', 190, 220),
   ...frappe('Matcha Crunch', 180, 200),
-  ...frappe('Black Forest', 220, 240),
+  ...frappe('Black Forest', 200, 220),
   ...frappe('Pretzel Crunch', 220, 240),
-  ...frappe('Java Chip', 170, 190),
+  ...frappe('Java Chip', 175, 190),
   ...frappe("S'mores", 220, 240),
   ...frappe('Berde', 175, 190),
   ...frappe('Strawberries & Cream', 175, 190),
@@ -71,20 +71,20 @@ export const menuSeed: MenuItem[] = [
   ...frappe('Choco Blast', 175, 190),
   ...frappe('Double Fudge Mocha', 190, 220),
   ...frappe('Salted Vanilla', 170, 190),
-  ...frappe('Nutella Oreo Milkshake', 220, 240),
+  ...frappe('Nutella Oreo Milkshake', 175, 190),
   ...frappe('Banana Peanut Butter Shake', 220, 240),
   ...frappe('Caramel Macchiato Shake', 170, 190),
   ...frappe('Pistachio Milkshake', 190, 220),
 
-  iced('Sunset (Strawberry)', 'Sparkling Series', 140),
-  iced('Sunrise (Peach)', 'Sparkling Series', 140),
-  iced('Midnight (Blueberry)', 'Sparkling Series', 140),
-  iced('Mojito (Blueberry/Strawberry)', 'Sparkling Series', 140),
+  iced('Sunset (Strawberry)', 'Sparkling Series', 120),
+  iced('Sunrise (Peach)', 'Sparkling Series', 120),
+  iced('Midnight (Blueberry)', 'Sparkling Series', 120),
+  iced('Mojito (Blueberry/Strawberry)', 'Sparkling Series', 120),
 
   iced('Strawberry Hibiscus Tea', 'Tea Infusion', 160),
   iced('Honey Lemon Tea', 'Tea Infusion', 160),
 
-  { name: 'Espresso', category: 'Beverages', subcategory: 'Specialty hot coffee', temperature: 'Hot', size: '16 oz', price: 140 },
+  { name: 'Espresso', category: 'Beverages', subcategory: 'Specialty hot coffee', temperature: 'Hot', size: '16 oz', price: 109 },
   { name: 'Espresso Single', category: 'Beverages', subcategory: 'Specialty hot coffee', temperature: 'Hot', size: '16 oz', price: 110 },
   { name: 'Espresso Double', category: 'Beverages', subcategory: 'Specialty hot coffee', temperature: 'Hot', size: '16 oz', price: 120 },
   { name: 'Cappuccino', category: 'Beverages', subcategory: 'Specialty hot coffee', temperature: 'Hot', size: '16 oz', price: 150 },
@@ -134,6 +134,9 @@ export const menuSeed: MenuItem[] = [
   food('BBQ Fries', 'Fries', 150),
   food('Sour Cream Fries', 'Fries', 150),
   food('Triple Cheese Fries', 'Fries', 150),
+
+  food('Customized', 'Customized', 0),
+  food('Bento Cheese Cake', 'Cakes', 350),
 ];
 
 const additionNames = new Set([
@@ -141,8 +144,12 @@ const additionNames = new Set([
   'Club House', 'Egg Mayo', 'Tuna Melt', 'Kani Salad', 'Caesar Salad',
   'Creamy Mushroom Soup', 'Crab Corn Soup', 'Aligue Pasta',
   'Crispy Creamy Chicken', 'Sausage w/ Egg', 'Spam w/ Egg', 'Corn Beef w/ Egg', 'Salmon Bites',
+  'Customized', 'Bento Cheese Cake',
 ]);
-const menuAdditions = menuSeed.filter(item => additionNames.has(item.name));
+const menuAdditions = [
+  ...menuSeed.filter(item => additionNames.has(item.name)),
+  ...menuSeed.filter(item => (item.name === 'Strawberry Matcha' || item.name === 'Coconut Matcha') && item.temperature === 'Hot'),
+];
 
 const itemKey = (item: { name: string; temperature: string; size: string }) => `${item.name}|${item.temperature}|${item.size}`;
 
@@ -161,6 +168,44 @@ async function removeDuplicates(rows: { id: string; name: string; temperature: s
   }
 }
 
+const priceAdjustments: { name: string; temperature: string; size: string; from: number; to: number }[] = [
+  { name: 'Cloud Americano', temperature: 'Hot', size: '16 oz', from: 119, to: 130 },
+  { name: 'Cloud Americano', temperature: 'Iced', size: '16 oz', from: 129, to: 140 },
+  { name: 'Orange Espresso', temperature: 'Hot', size: '16 oz', from: 129, to: 140 },
+  { name: 'Orange Espresso', temperature: 'Iced', size: '16 oz', from: 139, to: 150 },
+  { name: 'Spanish Latte', temperature: 'Hot', size: '16 oz', from: 139, to: 140 },
+  { name: 'Spanish Latte', temperature: 'Iced', size: '16 oz', from: 149, to: 150 },
+  { name: 'Seasalt Latte', temperature: 'Hot', size: '16 oz', from: 150, to: 140 },
+  { name: 'Seasalt Latte', temperature: 'Iced', size: '16 oz', from: 160, to: 150 },
+  { name: 'Biscoff Latte', temperature: 'Hot', size: '16 oz', from: 165, to: 170 },
+  { name: 'Cafe Latte', temperature: 'Hot', size: '16 oz', from: 130, to: 140 },
+  { name: 'Cafe Latte', temperature: 'Iced', size: '16 oz', from: 140, to: 150 },
+  { name: 'Ube Cloud', temperature: 'Iced', size: '16 oz', from: 170, to: 150 },
+  { name: 'Milky Matcha', temperature: 'Hot', size: '16 oz', from: 160, to: 140 },
+  { name: 'Strawberry Matcha', temperature: 'Iced', size: '16 oz', from: 170, to: 180 },
+  { name: 'Seasalt Matcha', temperature: 'Hot', size: '16 oz', from: 165, to: 140 },
+  { name: 'Dirty Matcha', temperature: 'Hot', size: '16 oz', from: 130, to: 140 },
+  { name: 'Black Forest', temperature: 'Iced', size: '16 oz', from: 220, to: 200 },
+  { name: 'Black Forest', temperature: 'Iced', size: '22 oz', from: 240, to: 220 },
+  { name: 'Java Chip', temperature: 'Iced', size: '16 oz', from: 170, to: 175 },
+  { name: 'Nutella Oreo Milkshake', temperature: 'Iced', size: '16 oz', from: 220, to: 175 },
+  { name: 'Nutella Oreo Milkshake', temperature: 'Iced', size: '22 oz', from: 240, to: 190 },
+  { name: 'Sunset (Strawberry)', temperature: 'Iced', size: '16 oz', from: 140, to: 120 },
+  { name: 'Sunrise (Peach)', temperature: 'Iced', size: '16 oz', from: 140, to: 120 },
+  { name: 'Midnight (Blueberry)', temperature: 'Iced', size: '16 oz', from: 140, to: 120 },
+  { name: 'Mojito (Blueberry/Strawberry)', temperature: 'Iced', size: '16 oz', from: 140, to: 120 },
+  { name: 'Espresso', temperature: 'Hot', size: '16 oz', from: 140, to: 109 },
+  { name: 'El Churros', temperature: 'None', size: '12 pcs', from: 130, to: 150 },
+];
+
+async function applyPriceAdjustments(rows: { id: string; name: string; temperature: string; size: string; price: number }[]) {
+  const pending = priceAdjustments.flatMap(change => {
+    const match = rows.find(row => row.name === change.name && row.temperature === change.temperature && row.size === change.size && Number(row.price) === change.from);
+    return match ? [{ id: match.id, to: change.to }] : [];
+  });
+  await Promise.all(pending.map(change => supabase.from('products').update({ price: change.to }).eq('id', change.id)));
+}
+
 let syncing: Promise<void> | null = null;
 
 async function applyMenuAdditions(rows: { id: string; name: string; temperature: string; size: string; price: number }[]) {
@@ -170,13 +215,18 @@ async function applyMenuAdditions(rows: { id: string; name: string; temperature:
     const { error } = await supabase.from('products').update({ name: 'Aligue Pasta' }).eq('id', aglio.id);
     if (!error) aglio.name = 'Aligue Pasta';
   }
-  const churros = rows.find(row => row.name === 'El Churros' && row.size === '12 pcs' && Number(row.price) === 130);
-  if (churros) await supabase.from('products').update({ price: 150 }).eq('id', churros.id);
+  await applyPriceAdjustments(rows);
 
   const keys = new Set(rows.map(itemKey));
   const missing = menuAdditions.filter(item => !keys.has(itemKey(item)));
   if (!missing.length) return;
-  const payload = missing.map(item => ({ ...item, description: null, image_url: null, quantity: STARTING_STOCK, available: true }));
+  const payload = missing.map(item => ({
+    ...item,
+    description: item.subcategory === 'Customized' ? 'Set price per order in POS or inventory.' : null,
+    image_url: null,
+    quantity: item.subcategory === 'Customized' ? 999 : STARTING_STOCK,
+    available: true,
+  }));
   const { error } = await supabase.from('products').insert(payload);
   if (!error) return;
   for (const row of payload) await supabase.from('products').insert(row);

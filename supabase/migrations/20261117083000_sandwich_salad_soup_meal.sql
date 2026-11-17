@@ -22,9 +22,42 @@ SET name = 'Aligue Pasta'
 WHERE name = 'Aglio Pasta'
   AND NOT EXISTS (SELECT 1 FROM public.products WHERE name = 'Aligue Pasta');
 
-UPDATE public.products
-SET price = 150
-WHERE name = 'El Churros' AND size = '12 pcs' AND price = 130;
+UPDATE public.products AS product
+SET price = change.price
+FROM (
+  VALUES
+    ('Cloud Americano', 'Hot', '16 oz', 119::numeric, 130::numeric),
+    ('Cloud Americano', 'Iced', '16 oz', 129::numeric, 140::numeric),
+    ('Orange Espresso', 'Hot', '16 oz', 129::numeric, 140::numeric),
+    ('Orange Espresso', 'Iced', '16 oz', 139::numeric, 150::numeric),
+    ('Spanish Latte', 'Hot', '16 oz', 139::numeric, 140::numeric),
+    ('Spanish Latte', 'Iced', '16 oz', 149::numeric, 150::numeric),
+    ('Seasalt Latte', 'Hot', '16 oz', 150::numeric, 140::numeric),
+    ('Seasalt Latte', 'Iced', '16 oz', 160::numeric, 150::numeric),
+    ('Biscoff Latte', 'Hot', '16 oz', 165::numeric, 170::numeric),
+    ('Cafe Latte', 'Hot', '16 oz', 130::numeric, 140::numeric),
+    ('Cafe Latte', 'Iced', '16 oz', 140::numeric, 150::numeric),
+    ('Ube Cloud', 'Iced', '16 oz', 170::numeric, 150::numeric),
+    ('Milky Matcha', 'Hot', '16 oz', 160::numeric, 140::numeric),
+    ('Strawberry Matcha', 'Iced', '16 oz', 170::numeric, 180::numeric),
+    ('Seasalt Matcha', 'Hot', '16 oz', 165::numeric, 140::numeric),
+    ('Dirty Matcha', 'Hot', '16 oz', 130::numeric, 140::numeric),
+    ('Black Forest', 'Iced', '16 oz', 220::numeric, 200::numeric),
+    ('Black Forest', 'Iced', '22 oz', 240::numeric, 220::numeric),
+    ('Java Chip', 'Iced', '16 oz', 170::numeric, 175::numeric),
+    ('Nutella Oreo Milkshake', 'Iced', '16 oz', 220::numeric, 175::numeric),
+    ('Nutella Oreo Milkshake', 'Iced', '22 oz', 240::numeric, 190::numeric),
+    ('Sunset (Strawberry)', 'Iced', '16 oz', 140::numeric, 120::numeric),
+    ('Sunrise (Peach)', 'Iced', '16 oz', 140::numeric, 120::numeric),
+    ('Midnight (Blueberry)', 'Iced', '16 oz', 140::numeric, 120::numeric),
+    ('Mojito (Blueberry/Strawberry)', 'Iced', '16 oz', 140::numeric, 120::numeric),
+    ('Espresso', 'Hot', '16 oz', 140::numeric, 109::numeric),
+    ('El Churros', 'None', '12 pcs', 130::numeric, 150::numeric)
+) AS change(name, temperature, size, old_price, price)
+WHERE product.name = change.name
+  AND product.temperature = change.temperature
+  AND product.size = change.size
+  AND product.price = change.old_price;
 
 INSERT INTO public.products (user_id, name, description, category, subcategory, temperature, size, image_url, price, quantity, available)
 SELECT owner.user_id, item.name, null, item.category, item.subcategory, item.temperature, item.size, null, item.price, 20, true
@@ -37,6 +70,8 @@ FROM (
 ) AS owner
 CROSS JOIN (
   VALUES
+    ('Strawberry Matcha', 'Beverages', 'Matcha Series', 'Hot', '16 oz', 140::numeric),
+    ('Coconut Matcha', 'Beverages', 'Matcha Series', 'Hot', '16 oz', 140::numeric),
     ('Choco Blast', 'Beverages', 'Frappe', 'Iced', '16 oz', 175::numeric),
     ('Choco Blast', 'Beverages', 'Frappe', 'Iced', '22 oz', 190::numeric),
     ('Cortado', 'Beverages', 'Specialty hot coffee', 'Hot', '16 oz', 150::numeric),

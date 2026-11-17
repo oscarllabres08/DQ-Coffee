@@ -1,9 +1,15 @@
 export type ReceiptItem = { name: string; detail: string; qty: number; unit: number; amount: number };
+export type ServiceType = 'Dine in' | 'Take out';
+
 export type SaleReceipt = {
   orderNo: string;
   when: Date;
+  serviceType: ServiceType;
   payment: string;
   items: ReceiptItem[];
+  subtotal?: number;
+  discountPercent?: number;
+  discountAmount?: number;
   total: number;
   received: number;
   change: number;
@@ -11,6 +17,7 @@ export type SaleReceipt = {
 
 const WIDTH = 32;
 const STORE_ADDRESS = '14 Provincial Road San Ramon Dinalupihan Bataan, 2110';
+const STORE_PHONE = '(0976) 310 8363';
 const RECEIPT_LOGO = '/logoreceipt.png';
 const LOGO_PRINT_WIDTH = 280;
 const receiptDash = () => '-'.repeat(WIDTH);
@@ -216,23 +223,59 @@ function escPosRaster(width: number, height: number, rgba: Uint8ClampedArray) {
   return out;
 }
 
+function logoBounds(image: HTMLImageElement) {
+  const probe = document.createElement('canvas');
+  probe.width = image.width;
+  probe.height = image.height;
+  const ctx = probe.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return { x: 0, y: 0, width: image.width, height: image.height };
+  ctx.drawImage(image, 0, 0);
+  const { data, width, height } = ctx.getImageData(0, 0, image.width, image.height);
+  let minX = width;
+  let minY = height;
+  let maxX = 0;
+  let maxY = 0;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (data[(y * width + x) * 4 + 3] > 20) {
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (maxX < minX) return { x: 0, y: 0, width: image.width, height: image.height };
+  const pad = 12;
+  const x = Math.max(0, minX - pad);
+  const y = Math.max(0, minY - pad);
+  return { x, y, width: Math.min(width - x, maxX - minX + 1 + pad * 2), height: Math.min(height - y, maxY - minY + 1 + pad * 2) };
+}
+
+async function receiptLogoCanvas() {
+  const image = await loadReceiptLogo();
+  const bounds = logoBounds(image);
+  const width = LOGO_PRINT_WIDTH;
+  const height = Math.max(1, Math.round(width * bounds.height / bounds.width));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return null;
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(image, bounds.x, bounds.y, bounds.width, bounds.height, 0, 0, width, height);
+  return canvas;
+}
+
 export async function loadReceiptLogoRaster() {
   if (logoRasterCache !== undefined) return logoRasterCache;
   if (typeof document === 'undefined') { logoRasterCache = null; return null; }
   try {
-    const image = await loadReceiptLogo();
-    const scale = Math.min(1, LOGO_PRINT_WIDTH / image.width);
-    const width = Math.max(1, Math.round(image.width * scale));
-    const height = Math.max(1, Math.round(image.height * scale));
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) { logoRasterCache = null; return null; }
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, width, height);
-    ctx.drawImage(image, 0, 0, width, height);
-    logoRasterCache = escPosRaster(width, height, ctx.getImageData(0, 0, width, height).data);
+    const canvas = await receiptLogoCanvas();
+    const ctx = canvas?.getContext('2d', { willReadFrequently: true });
+    if (!canvas || !ctx) { logoRasterCache = null; return null; }
+    logoRasterCache = escPosRaster(canvas.width, canvas.height, ctx.getImageData(0, 0, canvas.width, canvas.height).data);
     return logoRasterCache;
   } catch {
     logoRasterCache = null;
@@ -241,9 +284,15 @@ export async function loadReceiptLogoRaster() {
 }
 
 function receiptLines(receipt: SaleReceipt) {
-  const lines = ['Artisan coffee & cakes', ...wrap(STORE_ADDRESS, WIDTH), whenLabel(receipt.when), `#${receipt.orderNo}`, receiptDash()];
+  const lines = ['Artisan coffee & cakes', ...wrap(STORE_ADDRESS, WIDTH), STORE_PHONE, whenLabel(receipt.when), `#${receipt.orderNo}`, receipt.serviceType, receiptDash()];
   receipt.items.forEach(item => lines.push(...itemLines(item)));
-  lines.push(receiptDash(), columns('TOTAL', amount(receipt.total)));
+  lines.push(receiptDash());
+  if (receipt.discountAmount && receipt.discountAmount > 0) {
+    const subtotal = receipt.subtotal ?? receipt.total + receipt.discountAmount;
+    lines.push(columns('Subtotal', amount(subtotal)));
+    lines.push(columns(`Discount ${receipt.discountPercent ?? 0}%`, `-${amount(receipt.discountAmount)}`));
+  }
+  lines.push(columns('TOTAL', amount(receipt.total)));
   if (receipt.payment === 'Cash') lines.push(columns('Cash', amount(receipt.received)), columns('Change', amount(receipt.change)));
   else lines.push(columns(receipt.payment, amount(receipt.total)), columns('Received', amount(receipt.received)), columns('Change', amount(receipt.change)));
   lines.push(receiptDash(), 'Thank you!', 'Please come again');
@@ -290,7 +339,7 @@ async function encodeReceipt(receipt: SaleReceipt) {
   ]);
 }
 
-export function receiptHtml(receipt: SaleReceipt) {
+export function receiptHtml(receipt: SaleReceipt, logoSrc = RECEIPT_LOGO) {
   const lines = receiptLines(receipt);
   const dash = receiptDash();
   const footerAt = lines.length - 2;
@@ -306,11 +355,11 @@ export function receiptHtml(receipt: SaleReceipt) {
     html, body { margin: 0; padding: 0; width: 58mm; background: #fff; color: #000; color-scheme: light; }
     body { font: 10px/1.25 'Courier New', ui-monospace, monospace; }
     .ticket { width: 58mm; padding: 2mm 2mm 4mm; }
-    .receipt-logo { display: block; width: 48mm; max-width: 100%; height: auto; margin: 0 auto 2mm; object-fit: contain; }
+    .receipt-logo { display: block; width: 46mm; max-width: 100%; height: auto; margin: 0 auto 2mm; object-fit: contain; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .center { text-align: center; }
     hr { border: 0; border-top: 1px dashed #000; margin: 1.5mm 0; }
     div { white-space: pre; }
-  </style></head><body><main class="ticket"><img class="receipt-logo" src="${escapeHtml(RECEIPT_LOGO)}" alt="DQ-Cafe" />${rows}</main></body></html>`;
+  </style></head><body><main class="ticket"><img class="receipt-logo" src="${escapeHtml(logoSrc)}" alt="DQ-Cafe" />${rows}</main></body></html>`;
 }
 
 function escapeHtml(value: string) {
@@ -448,6 +497,7 @@ export function sampleReceipt(): SaleReceipt {
   return {
     orderNo: 'TEST',
     when: new Date(),
+    serviceType: 'Dine in',
     payment: 'Cash',
     items: [{ name: 'Flat White', detail: 'Hot', qty: 1, unit: 150, amount: 150 }],
     total: 150,
@@ -481,20 +531,35 @@ async function printSerial(port: PrinterPort, payload: Uint8Array) {
   finally { writer.releaseLock(); }
 }
 
+async function receiptLogoSrc() {
+  try {
+    const canvas = await receiptLogoCanvas();
+    if (canvas) return canvas.toDataURL('image/png');
+  } catch { /* fall through to the public file */ }
+  return new URL(RECEIPT_LOGO, window.location.href).href;
+}
+
 export function printReceiptDialog(receipt: SaleReceipt) {
   const iframe = document.createElement('iframe');
   iframe.setAttribute('aria-hidden', 'true');
-  iframe.style.cssText = 'position:fixed;left:0;top:0;width:58mm;height:100vh;border:0;opacity:0;pointer-events:none;';
+  iframe.style.cssText = 'position:fixed;left:0;top:0;width:58mm;height:100vh;border:0;background:#fff;z-index:2147483000;';
   document.body.appendChild(iframe);
   const doc = iframe.contentDocument;
   const win = iframe.contentWindow;
   if (!doc || !win) { iframe.remove(); return false; }
-  doc.open();
-  doc.write(receiptHtml(receipt));
-  doc.close();
-  win.onafterprint = () => iframe.remove();
-  win.focus();
-  win.print();
+  void receiptLogoSrc().then(async logoSrc => {
+    if (!iframe.isConnected) return;
+    doc.open();
+    doc.write(receiptHtml(receipt, logoSrc));
+    doc.close();
+    win.onafterprint = () => iframe.remove();
+    const image = doc.querySelector('img.receipt-logo');
+    if (image instanceof HTMLImageElement) {
+      try { await image.decode(); } catch { /* print the text even if the logo cannot decode */ }
+    }
+    win.focus();
+    win.print();
+  });
   return true;
 }
 

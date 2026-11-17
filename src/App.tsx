@@ -2,27 +2,29 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 import { downloadSalesSheet } from '@/lib/salesSheet';
-import { connectPrinter, ensurePrinter, forgetPrinter, printReceiptDialog, printSaleReceipt, printerProblem, printerRemembered, printerSupport, refreshPrinter, sampleReceipt, warmUpPrinter, type PrinterLink, type SaleReceipt } from '@/lib/receiptPrinter';
+import { connectPrinter, ensurePrinter, forgetPrinter, printReceiptDialog, printSaleReceipt, printerProblem, printerRemembered, printerSupport, refreshPrinter, sampleReceipt, warmUpPrinter, type PrinterLink, type SaleReceipt, type ServiceType } from '@/lib/receiptPrinter';
 import { ensureMenu } from '@/data/menuSeed';
-import { Banknote, BarChart3, Box, Calendar, Car, ChevronDown, Coffee, CreditCard, Download, Droplets, Eye, EyeOff, Home, ImagePlus, LayoutDashboard, Lock, LogOut, Menu, Moon, Package, Pencil, Plus, Printer, Receipt, Search, Settings, ShoppingBag, Smartphone, Sun, Tag, Trash2, TrendingUp, Trophy, UserRound, Users, Wifi, Wrench, X, Zap, ChevronRight } from 'lucide-react';
+import { Banknote, BarChart3, Box, Calendar, Car, ChevronDown, Clock, Coffee, CreditCard, Download, Droplets, Eye, EyeOff, Home, ImagePlus, LayoutDashboard, Lock, LogIn, LogOut, Menu, Moon, Package, Pencil, Plus, Printer, Receipt, Search, Settings, ShoppingBag, Smartphone, Sun, Tag, Trash2, TrendingUp, Trophy, UserRound, Users, Wifi, Wrench, X, Zap, ChevronRight } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
 
 type MenuGroup = 'Food' | 'Beverages';
-type Subcategory = 'Coffee' | 'Non Coffee' | 'Matcha Series' | 'Frappe' | 'Sparkling Series' | 'Tea Infusion' | 'Specialty hot coffee' | 'Breakfast' | 'Sandwich' | 'Salad' | 'Soup' | 'Pasta' | 'Snacks' | 'Meal' | 'Waffles' | 'Pastries' | 'Cakes' | 'Korean Dish' | 'Fries';
+type Subcategory = 'Coffee' | 'Non Coffee' | 'Matcha Series' | 'Frappe' | 'Sparkling Series' | 'Tea Infusion' | 'Specialty hot coffee' | 'Breakfast' | 'Sandwich' | 'Salad' | 'Soup' | 'Pasta' | 'Snacks' | 'Meal' | 'Waffles' | 'Pastries' | 'Cakes' | 'Customized' | 'Korean Dish' | 'Fries';
 type Temperature = 'Hot' | 'Iced' | 'None';
 type Size = '16 oz' | '22 oz' | 'Regular' | '6 pcs' | '12 pcs';
-type Page = 'dashboard' | 'pos' | 'inventory' | 'sales' | 'expenses' | 'settings';
+type Page = 'dashboard' | 'pos' | 'inventory' | 'sales' | 'expenses' | 'employees' | 'settings';
 type ExpenseCategory = 'Rent' | 'Electricity' | 'Water Bill' | 'Internet' | 'Salaries / Wages' | 'Transportation' | 'Maintenance' | 'Supplies' | 'Miscellaneous';
 type Product = { id: string; name: string; description: string | null; category: MenuGroup; subcategory: Subcategory; temperature: Temperature; size: Size; image_url: string | null; price: number; quantity: number; available: boolean; created_at: string };
 type Addon = { id: string; name: string; price: number };
 type CartItem = Product & { lineId: string; cartQuantity: number; sweetness: string; addons: Addon[] };
-type Sale = { id: string; subtotal: number; tax: number; total: number; payment_method: string; created_at: string };
+type Sale = { id: string; subtotal: number; tax: number; total: number; payment_method: string; service_type?: ServiceType; created_at: string };
 type SaleItem = { product_id: string | null; product_name: string; quantity: number; line_total: number };
 type Expense = { id: string; category: ExpenseCategory; label: string; amount: number; notes: string | null; spent_on: string; created_at: string };
+type Employee = { id: string; employee_no: string; name: string; shift_start: string; hourly_rate: number | null; created_at: string };
+type TimeRecord = { id: string; employee_id: string; work_date: string; time_in: string; time_out: string | null; late_minutes: number; created_at: string };
 
 const logo = '/icon.png';
 const THEME_KEY = 'dq-theme';
-const pages: Page[] = ['dashboard', 'pos', 'inventory', 'sales', 'expenses', 'settings'];
+const pages: Page[] = ['dashboard', 'pos', 'inventory', 'sales', 'expenses', 'employees', 'settings'];
 const pageFromLocation = (): Page => {
   const name = new URLSearchParams(window.location.search).get('page');
   return name && pages.includes(name as Page) ? name as Page : 'dashboard';
@@ -42,6 +44,9 @@ const applyTheme = (dark: boolean) => {
   localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light');
 };
 const money = (value: number) => `₱${value.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`;
+const posDiscounts = [0, 5, 10, 15, 20] as const;
+type PosDiscount = (typeof posDiscounts)[number];
+const serviceTypes: ServiceType[] = ['Dine in', 'Take out'];
 const localDateKey = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const formatDay = (key: string) => { const [year, month, day] = key.split('-').map(Number); return new Date(year, (month || 1) - 1, day || 1).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }); };
 const expenseCategories: ExpenseCategory[] = ['Rent', 'Electricity', 'Water Bill', 'Internet', 'Salaries / Wages', 'Transportation', 'Maintenance', 'Supplies', 'Miscellaneous'];
@@ -70,7 +75,7 @@ function expenseTone(category: string) {
 }
 const menuGroups: MenuGroup[] = ['Beverages', 'Food'];
 const drinkSubs: Subcategory[] = ['Coffee', 'Non Coffee', 'Matcha Series', 'Frappe', 'Sparkling Series', 'Tea Infusion', 'Specialty hot coffee'];
-const foodSubs: Subcategory[] = ['Breakfast', 'Sandwich', 'Salad', 'Soup', 'Pasta', 'Snacks', 'Meal', 'Waffles', 'Pastries', 'Cakes', 'Korean Dish', 'Fries'];
+const foodSubs: Subcategory[] = ['Breakfast', 'Sandwich', 'Salad', 'Soup', 'Pasta', 'Snacks', 'Meal', 'Waffles', 'Pastries', 'Cakes', 'Customized', 'Korean Dish', 'Fries'];
 const subcategories: Record<MenuGroup, Subcategory[]> = { Beverages: drinkSubs, Food: foodSubs };
 const frappeSizes: Size[] = ['16 oz', '22 oz'];
 const snackSizes: Size[] = ['Regular', '6 pcs', '12 pcs'];
@@ -92,6 +97,7 @@ const temperatureOptions: Record<Subcategory, Temperature[]> = {
   Waffles: ['None'],
   Pastries: ['None'],
   Cakes: ['None'],
+  Customized: ['None'],
   'Korean Dish': ['None'],
   Fries: ['None'],
 };
@@ -111,7 +117,8 @@ const orderDetail = (item: Pick<CartItem, 'category' | 'subcategory' | 'temperat
 const splitByTemperature = (subcategory: Subcategory) => temperatureOptions[subcategory].length > 1;
 const groupName = (subcategory: Subcategory, temperature?: Temperature) => splitByTemperature(subcategory) && temperature && temperature !== 'None' ? `${temperature} ${subcategory}` : subcategory;
 const inImageGroup = (product: Pick<Product, 'subcategory' | 'temperature'>, subcategory: Subcategory, temperature?: Temperature) => product.subcategory === subcategory && (!splitByTemperature(subcategory) || product.temperature === temperature);
-const canSell = (product: Pick<Product, 'available' | 'quantity'>) => product.available !== false && product.quantity > 0;
+const skipsStock = (product: Pick<Product, 'subcategory'>) => product.subcategory === 'Customized';
+const canSell = (product: Pick<Product, 'available' | 'quantity' | 'subcategory'>) => product.available !== false && (skipsStock(product) || product.quantity > 0);
 const normalizeProduct = (product: Product): Product => {
   const available = product.available !== false;
   if (product.category === 'Food' || product.category === 'Beverages') return { ...product, available };
@@ -223,6 +230,8 @@ function AdminApp({ session }: { session: Session }) {
   const [sales, setSales] = useState<Sale[]>([]);
   const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [timeRecords, setTimeRecords] = useState<TimeRecord[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(() => pageFromLocation() === 'settings');
@@ -230,8 +239,8 @@ function AdminApp({ session }: { session: Session }) {
   const settingsMenuRef = useRef<HTMLDivElement>(null);
   const loadData = async () => {
     await ensureMenu();
-    const [{ data: productData }, { data: saleData }, { data: itemData }, { data: expenseData }] = await Promise.all([supabase.from('products').select('*').order('created_at', { ascending: false }), supabase.from('sales').select('*').order('created_at', { ascending: false }), supabase.from('sale_items').select('product_id, product_name, quantity, line_total'), supabase.from('expenses').select('*').order('spent_on', { ascending: false }).order('created_at', { ascending: false })]);
-    setProducts(((productData as Product[]) ?? []).map(normalizeProduct)); setSales((saleData as Sale[]) ?? []); setSaleItems((itemData as SaleItem[]) ?? []); setExpenses((expenseData as Expense[]) ?? []);
+    const [{ data: productData }, { data: saleData }, { data: itemData }, { data: expenseData }, { data: employeeData }, { data: recordData }] = await Promise.all([supabase.from('products').select('*').order('created_at', { ascending: false }), supabase.from('sales').select('*').order('created_at', { ascending: false }), supabase.from('sale_items').select('product_id, product_name, quantity, line_total'), supabase.from('expenses').select('*').order('spent_on', { ascending: false }).order('created_at', { ascending: false }), supabase.from('employees').select('*').order('employee_no', { ascending: true }), supabase.from('time_records').select('*').order('work_date', { ascending: false }).order('time_in', { ascending: false })]);
+    setProducts(((productData as Product[]) ?? []).map(normalizeProduct)); setSales((saleData as Sale[]) ?? []); setSaleItems((itemData as SaleItem[]) ?? []); setExpenses((expenseData as Expense[]) ?? []); setEmployees((employeeData as Employee[]) ?? []); setTimeRecords((recordData as TimeRecord[]) ?? []);
   };
   useEffect(() => { loadData(); }, []);
   useEffect(() => { if (settingsOpen) settingsMenuRef.current?.scrollIntoView({ block: 'nearest' }); }, [settingsOpen]);
@@ -245,7 +254,7 @@ function AdminApp({ session }: { session: Session }) {
   const userName = session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Owner';
   const navigate = (next: Page) => { setPage(next); writePage(next, 'push'); setMobileOpen(false); if (next !== 'settings') setSettingsOpen(false); else setSettingsOpen(true); };
   const toggleDark = () => { const next = !dark; applyTheme(next); setDark(next); };
-  return <div className="app-shell">{mobileOpen && <button type="button" className="sidebar-backdrop" aria-label="Close menu" onClick={() => setMobileOpen(false)} />}<aside className={mobileOpen ? 'sidebar open' : 'sidebar'}><div className="sidebar-brand"><img src={logo} alt="DQ-Cafe" /><div><strong>DQ-Cafe</strong><small>Admin workspace</small></div></div><nav><NavButton icon={<LayoutDashboard size={18} />} label="Overview" active={page === 'dashboard'} onClick={() => navigate('dashboard')} /><NavButton icon={<ShoppingBag size={18} />} label="Point of Sale" active={page === 'pos'} onClick={() => navigate('pos')} /><NavButton icon={<Box size={18} />} label="Inventory" active={page === 'inventory'} onClick={() => navigate('inventory')} /><NavButton icon={<BarChart3 size={18} />} label="Sales & Analytics" active={page === 'sales'} onClick={() => navigate('sales')} /><NavButton icon={<Receipt size={18} />} label="Expenses" active={page === 'expenses'} onClick={() => navigate('expenses')} /><div className="nav-group"><button className={settingsOpen || page === 'settings' ? 'nav-button active' : 'nav-button'} aria-expanded={settingsOpen} onClick={() => setSettingsOpen(open => !open)}><Settings size={18} /><span>Settings</span><ChevronDown size={16} className={settingsOpen ? 'nav-chevron open' : 'nav-chevron'} /></button><div className={settingsOpen ? 'nav-submenu-wrap open' : 'nav-submenu-wrap'}><div className="nav-submenu" ref={settingsMenuRef}><button className={page === 'settings' ? 'nav-sub active' : 'nav-sub'} onClick={() => navigate('settings')}><UserRound size={16} /><span>Account settings</span></button><button type="button" className="nav-sub" role="switch" aria-checked={dark} onClick={toggleDark}>{dark ? <Moon size={16} /> : <Sun size={16} />}<span>Dark mode</span><span className={dark ? 'switch nav-switch on' : 'switch nav-switch'} aria-hidden="true"><span /></span></button></div></div></div></nav><div className="sidebar-bottom"><button className="nav-button" onClick={() => supabase.auth.signOut()}><LogOut size={18} /> <span>Sign out</span></button></div></aside><div className="main-shell"><header className="topbar"><button className="mobile-menu" onClick={() => setMobileOpen(!mobileOpen)}><Menu size={20} /></button><div className="topbar-title"><span className="eyebrow">DQ-CAFE / {page === 'dashboard' ? 'TODAY AT A GLANCE' : page === 'settings' ? 'ACCOUNT' : page === 'expenses' ? 'EXPENSES' : page.replace('-', ' ').toUpperCase()}</span><h1>{page === 'dashboard' ? 'Good morning, ' + userName.split(' ')[0] + '.' : page === 'pos' ? 'Point of Sale' : page === 'inventory' ? 'Inventory' : page === 'sales' ? 'Sales & Analytics' : page === 'expenses' ? 'Expenses' : 'Account settings'}</h1></div><div className="topbar-user"><span className="avatar">{userName[0].toUpperCase()}</span><span>{userName}</span><span className="status-dot" /></div></header><main className="content page-enter" key={page}>{page === 'dashboard' && <Dashboard products={products} sales={sales} saleItems={saleItems} expenses={expenses} navigate={navigate} />}{page === 'pos' && <POS products={products} cart={cart} setCart={setCart} onSale={loadData} />}{page === 'inventory' && <Inventory products={products} setProducts={setProducts} />}{page === 'sales' && <SalesAnalytics sales={sales} expenses={expenses} />}{page === 'expenses' && <ExpensesPage expenses={expenses} setExpenses={setExpenses} />}{page === 'settings' && <SettingsPage session={session} />}</main></div></div>;
+  return <div className="app-shell">{mobileOpen && <button type="button" className="sidebar-backdrop" aria-label="Close menu" onClick={() => setMobileOpen(false)} />}<aside className={mobileOpen ? 'sidebar open' : 'sidebar'}><div className="sidebar-brand"><img src={logo} alt="DQ-Cafe" /><div><strong>DQ-Cafe</strong><small>Admin workspace</small></div></div><nav><NavButton icon={<LayoutDashboard size={18} />} label="Overview" active={page === 'dashboard'} onClick={() => navigate('dashboard')} /><NavButton icon={<ShoppingBag size={18} />} label="Point of Sale" active={page === 'pos'} onClick={() => navigate('pos')} /><NavButton icon={<Box size={18} />} label="Inventory" active={page === 'inventory'} onClick={() => navigate('inventory')} /><NavButton icon={<BarChart3 size={18} />} label="Sales & Analytics" active={page === 'sales'} onClick={() => navigate('sales')} /><NavButton icon={<Receipt size={18} />} label="Expenses" active={page === 'expenses'} onClick={() => navigate('expenses')} /><NavButton icon={<Users size={18} />} label="Employees" active={page === 'employees'} onClick={() => navigate('employees')} /><div className="nav-group"><button className={settingsOpen || page === 'settings' ? 'nav-button active' : 'nav-button'} aria-expanded={settingsOpen} onClick={() => setSettingsOpen(open => !open)}><Settings size={18} /><span>Settings</span><ChevronDown size={16} className={settingsOpen ? 'nav-chevron open' : 'nav-chevron'} /></button><div className={settingsOpen ? 'nav-submenu-wrap open' : 'nav-submenu-wrap'}><div className="nav-submenu" ref={settingsMenuRef}><button className={page === 'settings' ? 'nav-sub active' : 'nav-sub'} onClick={() => navigate('settings')}><UserRound size={16} /><span>Account settings</span></button><button type="button" className="nav-sub" role="switch" aria-checked={dark} onClick={toggleDark}>{dark ? <Moon size={16} /> : <Sun size={16} />}<span>Dark mode</span><span className={dark ? 'switch nav-switch on' : 'switch nav-switch'} aria-hidden="true"><span /></span></button></div></div></div></nav><div className="sidebar-bottom"><button className="nav-button" onClick={() => supabase.auth.signOut()}><LogOut size={18} /> <span>Sign out</span></button></div></aside><div className="main-shell"><header className="topbar"><button className="mobile-menu" onClick={() => setMobileOpen(!mobileOpen)}><Menu size={20} /></button><div className="topbar-title"><span className="eyebrow">DQ-CAFE / {page === 'dashboard' ? 'TODAY AT A GLANCE' : page === 'settings' ? 'ACCOUNT' : page === 'expenses' ? 'EXPENSES' : page === 'employees' ? 'EMPLOYEES' : page.replace('-', ' ').toUpperCase()}</span><h1>{page === 'dashboard' ? 'Good morning, ' + userName.split(' ')[0] + '.' : page === 'pos' ? 'Point of Sale' : page === 'inventory' ? 'Inventory' : page === 'sales' ? 'Sales & Analytics' : page === 'expenses' ? 'Expenses' : page === 'employees' ? 'Employees' : 'Account settings'}</h1></div><div className="topbar-user"><span className="avatar">{userName[0].toUpperCase()}</span><span>{userName}</span><span className="status-dot" /></div></header><main className="content page-enter" key={page}>{page === 'dashboard' && <Dashboard products={products} sales={sales} saleItems={saleItems} expenses={expenses} navigate={navigate} />}{page === 'pos' && <POS products={products} cart={cart} setCart={setCart} onSale={loadData} />}{page === 'inventory' && <Inventory products={products} setProducts={setProducts} />}{page === 'sales' && <SalesAnalytics sales={sales} expenses={expenses} />}{page === 'expenses' && <ExpensesPage expenses={expenses} setExpenses={setExpenses} />}{page === 'employees' && <EmployeesPage employees={employees} setEmployees={setEmployees} records={timeRecords} setRecords={setTimeRecords} />}{page === 'settings' && <SettingsPage session={session} />}</main></div></div>;
 }
 
 function NavButton({ icon, label, active, onClick }: { icon: ReactNode; label: string; active: boolean; onClick: () => void }) { return <button className={active ? 'nav-button active' : 'nav-button'} onClick={onClick}>{icon}<span>{label}</span></button>; }
@@ -315,6 +324,18 @@ function Dashboard({ products, sales, saleItems, expenses, navigate }: { product
   return <div className="page-stack"><section className="hero-card"><div><span className="eyebrow light">YOUR DAILY BRIEF</span><h2>Make today<br /><em>worth sipping.</em></h2><p>Keep the bar flowing, the shelves ready, and every order feeling personal.</p><button className="light-btn" onClick={() => navigate('pos')}>Open POS <ChevronRight size={16} /></button></div><div className="hero-orb"><Coffee size={32} /></div></section><div className="stats-grid"><StatCard icon={<CreditCard size={19} />} label="Gross income" value={money(gross)} note="vs yesterday" change={grossChange} /><StatCard icon={<Receipt size={19} />} label="Expenses" value={money(spent)} note="Recorded today" tone="gold" /><StatCard icon={<TrendingUp size={19} />} label="Net income" value={money(net)} note="After today's expenses" tone={net < 0 ? 'red' : 'green'} kind={net < 0 ? 'loss' : 'net'} /><StatCard icon={<ShoppingBag size={19} />} label="Orders today" value={String(todaySales.length)} note="Completed sales" tone="brown" /></div>{lowStock > 0 && <button type="button" className="attention-bar" onClick={() => navigate('inventory')}><span>{lowStock} menu {lowStock === 1 ? 'item needs' : 'items need'} restock</span><ChevronRight size={16} /></button>}<section className="panel today-expenses"><div className="section-heading"><div><span className="eyebrow">TODAY</span><h3>Expenses</h3></div><button type="button" className="text-btn" onClick={() => navigate('expenses')}>Open expenses</button></div>{todayExpenses.length === 0 ? <p className="muted today-empty">No expenses recorded today.</p> : <div className="expense-list">{todayExpenses.map(item => <ExpenseRow key={item.id} expense={item} showDate={false} />)}</div>}</section><div className="dashboard-grid"><section className="panel quick-panel"><div className="section-heading"><div><span className="eyebrow">QUICK ACTIONS</span><h3>Keep things moving</h3></div></div><div className="quick-actions"><button onClick={() => navigate('pos')}><span className="quick-icon brown"><ShoppingBag size={20} /></span><span><strong>New order</strong><small>Serve a customer</small></span><ChevronRight size={17} /></button><button onClick={() => navigate('inventory')}><span className="quick-icon gold"><Plus size={20} /></span><span><strong>Add a product</strong><small>Update your menu</small></span><ChevronRight size={17} /></button><button onClick={() => navigate('sales')}><span className="quick-icon green"><BarChart3 size={20} /></span><span><strong>View performance</strong><small>Read your numbers</small></span><ChevronRight size={17} /></button><button onClick={() => navigate('expenses')}><span className="quick-icon gold"><Receipt size={20} /></span><span><strong>Log an expense</strong><small>Bills and other costs</small></span><ChevronRight size={17} /></button></div></section><section className="panel"><div className="section-heading"><div><span className="eyebrow">BEST SELLER</span><h3>Most ordered</h3></div></div>{!top ? <EmptyState text="Complete a sale to see your most ordered product." /> : <><div className="best-seller"><span className="product-thumb">{top.product ? <ProductMark product={top.product} size={22} /> : <Coffee size={22} />}</span><span><span className="best-rank"><Trophy size={13} /> Best seller</span><strong>{top.name}</strong><small>{top.meta}</small></span><b>{top.quantity} sold</b></div>{rest.length > 0 && <div className="seller-list">{rest.map((item, index) => <div className="seller-row" key={item.productId || item.name}><span className="seller-rank">{index + 2}</span><span className="product-thumb">{item.product ? <ProductMark product={item.product} size={17} /> : <Coffee size={17} />}</span><span className="mini-copy"><strong>{item.name}</strong><small>{item.meta}</small></span><b>{item.quantity} sold</b></div>)}</div>}</>}</section></div></div>;
 }
 
+function CardServiceField({ serviceType, disabled, onChange }: { serviceType: ServiceType; disabled: boolean; onChange: (value: ServiceType) => void }) {
+  return <div className="discount-field service-field"><span>Order type</span><div className="choice-row service-row">{serviceTypes.map(option => <button type="button" key={option} disabled={disabled} className={serviceType === option ? 'active' : ''} onClick={() => onChange(option)}>{option}</button>)}</div></div>;
+}
+function CardDiscountField({ discountPercent, discountAmount, disabled, onChange }: { discountPercent: PosDiscount; discountAmount: number; disabled: boolean; onChange: (value: PosDiscount) => void }) {
+  return <div className="discount-field"><span>Discount <span className="optional">optional</span></span><div className="choice-row discount-row">{posDiscounts.map(option => <button type="button" key={option} disabled={disabled} className={discountPercent === option ? 'active' : ''} onClick={() => onChange(option)}>{option ? `${option}%` : 'None'}</button>)}</div></div>;
+}
+function PricePicker({ product, onClose, onConfirm }: { product: Product; onClose: () => void; onConfirm: (price: number) => void }) {
+  const [price, setPrice] = useState(() => Number(product.price) > 0 ? String(product.price) : '');
+  const unit = Number(price) || 0;
+  const ready = unit > 0;
+  return <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><div className="modal addon-modal" role="dialog" aria-modal="true" aria-labelledby="price-title"><div className="modal-head"><div><span className="eyebrow">SET PRICE</span><h2 id="price-title">{product.name}</h2><p className="muted">Enter the amount for this order.</p></div><button className="icon-btn" type="button" onClick={onClose} aria-label="Close"><X size={20} /></button></div><div className="addon-sheet"><label className="cash-field">Price<input inputMode="decimal" autoFocus value={price} onChange={e => { const next = e.target.value; if (next === '' || /^\d*\.?\d{0,2}$/.test(next)) setPrice(next); }} placeholder="0.00" /></label><div className="addon-total"><span>Item total</span><strong>{ready ? money(unit) : money(0)}</strong></div><button className="primary-btn full" type="button" disabled={!ready} onClick={() => onConfirm(unit)}>{ready ? 'Add to order' : 'Enter a price'} <ChevronRight size={16} /></button></div></div></div>;
+}
 function AddonPicker({ product, sweetness, wantAddons, picked, onSweetness, onWant, onToggle, onClose, onConfirm }: { product: Product; sweetness: string; wantAddons: boolean; picked: string[]; onSweetness: (value: string) => void; onWant: (value: boolean) => void; onToggle: (id: string) => void; onClose: () => void; onConfirm: () => void }) {
   const extras = wantAddons ? menuAddons.filter(addon => picked.includes(addon.id)) : [];
   const unit = Number(product.price) + extras.reduce((sum, addon) => sum + addon.price, 0);
@@ -323,18 +344,44 @@ function AddonPicker({ product, sweetness, wantAddons, picked, onSweetness, onWa
 }
 function POS({ products, cart, setCart, onSale }: { products: Product[]; cart: CartItem[]; setCart: (items: CartItem[]) => void; onSale: () => Promise<void> }) {
   const [group, setGroup] = useState<MenuGroup>('Beverages'); const [subcategory, setSubcategory] = useState<'All' | Subcategory>('All'); const [search, setSearch] = useState(''); const [payment, setPayment] = useState('Cash'); const [cashReceived, setCashReceived] = useState(''); const [message, setMessage] = useState(''); const [saving, setSaving] = useState(false);
-  const [picker, setPicker] = useState<Product | null>(null); const [sweetness, setSweetness] = useState('0%'); const [wantAddons, setWantAddons] = useState(false); const [pickedAddons, setPickedAddons] = useState<string[]>([]); const [cartOpen, setCartOpen] = useState(false);
+  const [picker, setPicker] = useState<Product | null>(null); const [pricePicker, setPricePicker] = useState<Product | null>(null); const [sweetness, setSweetness] = useState('0%'); const [wantAddons, setWantAddons] = useState(false); const [pickedAddons, setPickedAddons] = useState<string[]>([]); const [cartOpen, setCartOpen] = useState(false);
   const [receiptPrompt, setReceiptPrompt] = useState<{ receipt: SaleReceipt; state: 'unavailable' | 'failed' } | null>(null);
   const [printerNote, setPrinterNote] = useState('');
   const [printerBusy, setPrinterBusy] = useState(false);
+  const [discountPercent, setDiscountPercent] = useState<PosDiscount>(0);
+  const [serviceType, setServiceType] = useState<ServiceType>('Dine in');
   useEffect(() => { document.body.classList.toggle('sheet-lock', cartOpen); return () => document.body.classList.remove('sheet-lock'); }, [cartOpen]);
   useEffect(() => { warmUpPrinter(); }, []);
-  const visible = products.filter(p => p.category === group && (subcategory === 'All' || p.subcategory === subcategory) && p.name.toLowerCase().includes(search.toLowerCase())); const subtotal = cart.reduce((sum, item) => sum + lineUnit(item) * item.cartQuantity, 0); const total = subtotal; const paymentOptions = ['Cash', 'GCash', 'Card'] as const; const paymentIcons: Record<string, ReactNode> = { Cash: <Banknote size={16} />, GCash: <Smartphone size={16} />, Card: <CreditCard size={16} /> };
+  const visible = products.filter(p => p.category === group && (subcategory === 'All' || p.subcategory === subcategory) && p.name.toLowerCase().includes(search.toLowerCase()));
+  const subtotal = cart.reduce((sum, item) => sum + lineUnit(item) * item.cartQuantity, 0);
+  const discountCents = discountPercent ? Math.round(subtotal * 100 * discountPercent / 100) : 0;
+  const discountAmount = discountCents / 100;
+  const total = (Math.round(subtotal * 100) - discountCents) / 100;
+  const paymentOptions = ['Cash', 'GCash', 'Card'] as const; const paymentIcons: Record<string, ReactNode> = { Cash: <Banknote size={16} />, GCash: <Smartphone size={16} />, Card: <CreditCard size={16} /> };
   const reserved = (productId: string) => cart.filter(item => item.id === productId).reduce((sum, item) => sum + item.cartQuantity, 0);
-  const openPicker = (product: Product) => { if (!canSell(product)) return; if (reserved(product.id) >= product.quantity) { setMessage('That item is already fully in the order.'); return; } setMessage(''); if (!allowsExtras(product)) { const lineId = product.id; const exists = cart.find(item => item.lineId === lineId); setCart(exists ? cart.map(item => item.lineId === lineId ? { ...item, cartQuantity: item.cartQuantity + 1 } : item) : [...cart, { ...product, lineId, cartQuantity: 1, sweetness: '', addons: [] }]); return; } setPicker(product); setSweetness('0%'); setWantAddons(false); setPickedAddons([]); };
+  const confirmCustomPrice = (unitPrice: number) => {
+    if (!pricePicker || unitPrice <= 0) return;
+    const lineId = `${pricePicker.id}|${unitPrice}`;
+    const exists = cart.find(item => item.lineId === lineId);
+    setCart(exists ? cart.map(item => item.lineId === lineId ? { ...item, cartQuantity: item.cartQuantity + 1 } : item) : [...cart, { ...pricePicker, price: unitPrice, lineId, cartQuantity: 1, sweetness: '', addons: [] }]);
+    setPricePicker(null);
+  };
+  const openPicker = (product: Product) => {
+    if (!canSell(product)) return;
+    if (!skipsStock(product) && reserved(product.id) >= product.quantity) { setMessage('That item is already fully in the order.'); return; }
+    setMessage('');
+    if (skipsStock(product)) { setPricePicker(product); return; }
+    if (!allowsExtras(product)) {
+      const lineId = product.id;
+      const exists = cart.find(item => item.lineId === lineId);
+      setCart(exists ? cart.map(item => item.lineId === lineId ? { ...item, cartQuantity: item.cartQuantity + 1 } : item) : [...cart, { ...product, lineId, cartQuantity: 1, sweetness: '', addons: [] }]);
+      return;
+    }
+    setPicker(product); setSweetness('0%'); setWantAddons(false); setPickedAddons([]);
+  };
   const toggleAddon = (id: string) => setPickedAddons(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id]);
-  const confirmAdd = () => { if (!picker || !allowsExtras(picker) || (wantAddons && !pickedAddons.length) || reserved(picker.id) >= picker.quantity) return; const extras = wantAddons ? menuAddons.filter(addon => pickedAddons.includes(addon.id)) : []; const lineId = `${picker.id}|${sweetness}|${extras.map(addon => addon.id).sort().join('+')}`; const exists = cart.find(item => item.lineId === lineId); setCart(exists ? cart.map(item => item.lineId === lineId ? { ...item, cartQuantity: item.cartQuantity + 1 } : item) : [...cart, { ...picker, lineId, cartQuantity: 1, sweetness, addons: extras }]); setPicker(null); };
-  const updateQty = (lineId: string, delta: number) => { const target = cart.find(item => item.lineId === lineId); if (!target || (delta > 0 && reserved(target.id) >= target.quantity)) return; setCart(cart.map(item => item.lineId === lineId ? { ...item, cartQuantity: item.cartQuantity + delta } : item).filter(item => item.cartQuantity > 0)); };
+  const confirmAdd = () => { if (!picker || !allowsExtras(picker) || (wantAddons && !pickedAddons.length) || (!skipsStock(picker) && reserved(picker.id) >= picker.quantity)) return; const extras = wantAddons ? menuAddons.filter(addon => pickedAddons.includes(addon.id)) : []; const lineId = `${picker.id}|${sweetness}|${extras.map(addon => addon.id).sort().join('+')}`; const exists = cart.find(item => item.lineId === lineId); setCart(exists ? cart.map(item => item.lineId === lineId ? { ...item, cartQuantity: item.cartQuantity + 1 } : item) : [...cart, { ...picker, lineId, cartQuantity: 1, sweetness, addons: extras }]); setPicker(null); };
+  const updateQty = (lineId: string, delta: number) => { const target = cart.find(item => item.lineId === lineId); if (!target || (delta > 0 && !skipsStock(target) && reserved(target.id) >= target.quantity)) return; setCart(cart.map(item => item.lineId === lineId ? { ...item, cartQuantity: item.cartQuantity + delta } : item).filter(item => item.cartQuantity > 0)); };
   const receivedCents = Math.round((Number(cashReceived) || 0) * 100); const totalCents = Math.round(total * 100); const change = (receivedCents - totalCents) / 100; const cashReady = cashReceived !== '' && receivedCents >= totalCents;
   const checkout = async () => {
     if (!cart.length || !cashReady || saving) return;
@@ -347,17 +394,19 @@ function POS({ products, cart, setCart, onSale }: { products: Product[]; cart: C
     setMessage('');
     const started = Date.now();
     try {
-      const { data: sale, error } = await supabase.from('sales').insert({ subtotal, tax: 0, total: saleTotal, payment_method: salePayment }).select().maybeSingle();
+      const { data: sale, error } = await supabase.from('sales').insert({ subtotal, tax: 0, total: saleTotal, payment_method: salePayment, service_type: serviceType }).select().maybeSingle();
       if (error || !sale) { setMessage(error?.message || 'Unable to complete sale.'); return; }
       const { error: itemsError } = await supabase.from('sale_items').insert(cart.map(item => ({ sale_id: sale.id, product_id: item.id, product_name: `${item.name} (${orderDetail(item)})`, quantity: item.cartQuantity, unit_price: lineUnit(item), line_total: lineUnit(item) * item.cartQuantity })));
       if (itemsError) { setMessage(itemsError.message); return; }
       const stock = new Map<string, { quantity: number; sold: number }>();
-      cart.forEach(item => { const row = stock.get(item.id) ?? { quantity: item.quantity, sold: 0 }; row.sold += item.cartQuantity; stock.set(item.id, row); });
+      cart.forEach(item => { if (skipsStock(item)) return; const row = stock.get(item.id) ?? { quantity: item.quantity, sold: 0 }; row.sold += item.cartQuantity; stock.set(item.id, row); });
       await Promise.all([...stock].map(([id, row]) => supabase.from('products').update({ quantity: Math.max(0, row.quantity - row.sold) }).eq('id', id)));
-      const receipt = { orderNo: String(sale.id).replace(/-/g, '').slice(0, 8).toUpperCase(), when: new Date(sale.created_at), payment: salePayment, items: receiptItems, total: saleTotal, received: saleReceived, change: saleChange };
+      const receipt = { orderNo: String(sale.id).replace(/-/g, '').slice(0, 8).toUpperCase(), when: new Date(sale.created_at), serviceType, payment: salePayment, items: receiptItems, subtotal, discountPercent: discountPercent || undefined, discountAmount: discountAmount || undefined, total: saleTotal, received: saleReceived, change: saleChange };
       const printed = await printSaleReceipt(receipt);
       setCart([]);
       setCashReceived('');
+      setDiscountPercent(0);
+      setServiceType('Dine in');
       await onSale();
       if (printed === 'printed') setMessage('Sale completed. Receipt sent to the printer.');
       else { setPrinterNote(printed === 'failed' ? printerProblem() : ''); setReceiptPrompt({ receipt, state: printed }); }
@@ -367,7 +416,7 @@ function POS({ products, cart, setCart, onSale }: { products: Product[]; cart: C
       setSaving(false);
     }
   };
-  return <div className="pos-layout"><section className="pos-menu"><div className="toolbar pos-toolbar"><div className="search-box"><Search size={17} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search menu..." /></div><div className="menu-groups">{menuGroups.map(item => <button type="button" className={group === item ? `active ${item === 'Food' ? 'food' : ''}` : ''} key={item} onClick={() => { setGroup(item); setSubcategory('All'); }}>{item}</button>)}</div><div className="category-pills"><button className={subcategory === 'All' ? 'active' : ''} onClick={() => setSubcategory('All')}>All</button>{subcategories[group].map(item => <button className={subcategory === item ? 'active' : ''} key={item} onClick={() => setSubcategory(item)}>{item}</button>)}</div></div>{visible.length === 0 ? <div className="panel"><EmptyState text="No products found. Add one from Inventory." /></div> : <div className="product-grid">{visible.map(product => <div role="button" tabIndex={canSell(product) ? 0 : -1} aria-disabled={!canSell(product)} className="product-card" key={product.id} onClick={() => { if (canSell(product)) openPicker(product); }} onKeyDown={event => { if (event.key !== 'Enter' && event.key !== ' ') return; event.preventDefault(); if (canSell(product)) openPicker(product); }}><div className="product-art">{product.temperature !== 'None' && <span className={`temp-tag ${product.temperature === 'Hot' ? 'hot' : 'iced'}`}>{product.temperature}</span>}<ProductMark product={product} size={31} /></div><div className="product-info"><strong>{product.name}</strong><small>{productMeta(product)}</small><div className="product-row"><b>{money(Number(product.price))}</b><span className="add-chip">{product.available === false ? 'Unavailable' : product.quantity === 0 ? 'Sold out' : 'Add'}</span></div></div></div>)}</div>}</section><aside className={cartOpen ? cart.length > 3 ? 'order-card cart-open cart-scroll' : 'order-card cart-open' : cart.length > 3 ? 'order-card cart-scroll' : 'order-card'} data-items={cart.length > 3 ? 'many' : cart.length}><div className="order-head"><div><span className="eyebrow">CURRENT ORDER</span><h2>{cart.length ? `${cart.length} item${cart.length > 1 ? 's' : ''}` : 'Start an order'}</h2></div><div className="order-head-actions"><button type="button" className="icon-btn sheet-close" onClick={() => setCartOpen(false)} aria-label="Close order"><X size={18} /></button><button className="icon-btn" disabled={saving} onClick={() => setCart([])} aria-label="Clear order"><Trash2 size={17} /></button></div></div><div className="cart-list">{cart.length === 0 ? <EmptyState text="Select a menu item to begin." /> : cart.map(item => <div className="cart-row" key={item.lineId}><span className="product-thumb"><ProductMark product={item} size={16} /></span><div><strong>{item.name}</strong><small title={orderDetail(item)}>{orderDetail(item)}</small></div><div className="qty"><button disabled={saving} onClick={() => updateQty(item.lineId, -1)}>-</button><span>{item.cartQuantity}</span><button disabled={saving} onClick={() => updateQty(item.lineId, 1)}>+</button></div><b>{money(lineUnit(item) * item.cartQuantity)}</b></div>)}</div><div className="order-summary"><div><span>Subtotal</span><b>{money(subtotal)}</b></div><div className="total-line"><span>Total</span><strong>{money(total)}</strong></div><label className="pay-field">Payment method<CategoryMenu value={payment} options={paymentOptions} icons={paymentIcons} onChange={setPayment} /></label>{cart.length > 0 && <label className="cash-field">Cash received<input inputMode="decimal" value={cashReceived} onChange={e => { const next = e.target.value; if (next === '' || /^\d*\.?\d{0,2}$/.test(next)) setCashReceived(next); }} placeholder="0.00" /></label>}{cart.length > 0 && <div className={cashReceived !== '' && change < 0 ? 'change-line short' : 'change-line'}><span>{cashReceived !== '' && change < 0 ? 'Short' : 'Change'}</span><strong>{cashReceived === '' ? money(0) : money(Math.abs(change))}</strong></div>}{message && <div className={message.startsWith('Sale completed') ? 'success-message' : 'form-message'}>{message}</div>}</div><div className="order-footer"><button className={saving ? 'primary-btn full is-saving' : 'primary-btn full'} disabled={!cart.length || !cashReady || saving} aria-busy={saving} onClick={checkout}>{saving ? <><span className="sale-spinner" aria-hidden="true" />Saving sale...</> : <>Complete sale <CreditCard size={16} /></>}</button></div></aside>{cartOpen && <button type="button" className="cart-sheet-backdrop" aria-label="Close order" onClick={() => setCartOpen(false)} />}<button type="button" className="cart-dock" onClick={() => setCartOpen(true)}><ShoppingBag size={18} /><span>{cart.length ? `${cart.length} item${cart.length > 1 ? 's' : ''}` : 'View order'}</span><b>{money(total)}</b></button>{picker && <AddonPicker product={picker} sweetness={sweetness} wantAddons={wantAddons} picked={pickedAddons} onSweetness={setSweetness} onWant={next => { setWantAddons(next); if (!next) setPickedAddons([]); }} onToggle={toggleAddon} onClose={() => setPicker(null)} onConfirm={confirmAdd} />}{receiptPrompt && <PrinterPrompt mode={receiptPrompt.state} note={printerNote} busy={printerBusy} onClose={() => { setReceiptPrompt(null); setMessage('Sale completed. The receipt was not printed.'); }} onDialog={() => { const opened = printReceiptDialog(receiptPrompt.receipt); setReceiptPrompt(null); setMessage(opened ? 'Sale completed. Confirm the print dialog to finish the receipt.' : 'Sale saved, but the receipt did not print.'); }} onRetry={async () => { setPrinterBusy(true); const printed = await printSaleReceipt(receiptPrompt.receipt); setPrinterBusy(false); if (printed === 'printed') { setReceiptPrompt(null); setMessage('Sale completed. Receipt sent to the printer.'); return; } setPrinterNote(printerProblem() || 'The receipt printer did not respond.'); setReceiptPrompt({ ...receiptPrompt, state: 'failed' }); }} onConnect={async kind => { setPrinterBusy(true); setPrinterNote(''); try { await ensurePrinter(kind); const printed = await printSaleReceipt(receiptPrompt.receipt); if (printed === 'printed') { setReceiptPrompt(null); setMessage('Sale completed. Receipt sent to the printer.'); } else { setPrinterNote(printerProblem() || 'The printer is connected, but the receipt did not print.'); setReceiptPrompt({ ...receiptPrompt, state: 'failed' }); } } catch (error) { setPrinterNote(error instanceof Error ? error.message : 'Could not connect the printer.'); } finally { setPrinterBusy(false); } }} />}</div>;
+  return <div className="pos-layout"><section className="pos-menu"><div className="toolbar pos-toolbar"><div className="search-box"><Search size={17} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search menu..." /></div><div className="menu-groups">{menuGroups.map(item => <button type="button" className={group === item ? `active ${item === 'Food' ? 'food' : ''}` : ''} key={item} onClick={() => { setGroup(item); setSubcategory('All'); }}>{item}</button>)}</div><div className="category-pills"><button className={subcategory === 'All' ? 'active' : ''} onClick={() => setSubcategory('All')}>All</button>{subcategories[group].map(item => <button className={subcategory === item ? 'active' : ''} key={item} onClick={() => setSubcategory(item)}>{item}</button>)}</div></div>{visible.length === 0 ? <div className="panel"><EmptyState text="No products found. Add one from Inventory." /></div> : <div className="product-grid">{visible.map(product => <div role="button" tabIndex={canSell(product) ? 0 : -1} aria-disabled={!canSell(product)} className="product-card" key={product.id} onClick={() => { if (canSell(product)) openPicker(product); }} onKeyDown={event => { if (event.key !== 'Enter' && event.key !== ' ') return; event.preventDefault(); if (canSell(product)) openPicker(product); }}><div className="product-art">{product.temperature !== 'None' && <span className={`temp-tag ${product.temperature === 'Hot' ? 'hot' : 'iced'}`}>{product.temperature}</span>}<ProductMark product={product} size={31} /></div><div className="product-info"><strong>{product.name}</strong><small>{productMeta(product)}</small><div className="product-row"><b>{skipsStock(product) && Number(product.price) <= 0 ? 'Custom price' : money(Number(product.price))}</b><span className="add-chip">{product.available === false ? 'Unavailable' : !skipsStock(product) && product.quantity === 0 ? 'Sold out' : 'Add'}</span></div></div></div>)}</div>}</section><aside className={cartOpen ? cart.length > 3 ? 'order-card cart-open cart-scroll' : 'order-card cart-open' : cart.length > 3 ? 'order-card cart-scroll' : 'order-card'} data-items={cart.length > 3 ? 'many' : cart.length}><div className="order-head"><div><span className="eyebrow">CURRENT ORDER</span><h2>{cart.length ? `${cart.length} item${cart.length > 1 ? 's' : ''}` : 'Start an order'}</h2></div><div className="order-head-actions"><button type="button" className="icon-btn sheet-close" onClick={() => setCartOpen(false)} aria-label="Close order"><X size={18} /></button><button className="icon-btn" disabled={saving} onClick={() => { setCart([]); setDiscountPercent(0); setServiceType('Dine in'); }} aria-label="Clear order"><Trash2 size={17} /></button></div></div><div className="cart-list">{cart.length === 0 ? <EmptyState text="Select a menu item to begin." /> : cart.map(item => <div className="cart-row" key={item.lineId}><span className="product-thumb"><ProductMark product={item} size={16} /></span><div><strong>{item.name}</strong><small title={orderDetail(item)}>{orderDetail(item)}</small></div><div className="qty"><button disabled={saving} onClick={() => updateQty(item.lineId, -1)}>-</button><span>{item.cartQuantity}</span><button disabled={saving} onClick={() => updateQty(item.lineId, 1)}>+</button></div><b>{money(lineUnit(item) * item.cartQuantity)}</b></div>)}</div><div className="order-summary"><div><span>Subtotal</span><b>{money(subtotal)}</b></div>{cart.length > 0 && <CardServiceField serviceType={serviceType} disabled={saving} onChange={setServiceType} />}{cart.length > 0 && <CardDiscountField discountPercent={discountPercent} discountAmount={discountAmount} disabled={saving} onChange={setDiscountPercent} />}{discountPercent > 0 && <div className="discount-line discount-summary"><span>Discount ({discountPercent}%)</span><b>-{money(discountAmount)}</b></div>}<div className="total-line"><span>Total</span><strong>{money(total)}</strong></div><label className="pay-field">Payment method<CategoryMenu value={payment} options={paymentOptions} icons={paymentIcons} onChange={setPayment} /></label>{cart.length > 0 && <label className="cash-field">Cash received<input inputMode="decimal" value={cashReceived} onChange={e => { const next = e.target.value; if (next === '' || /^\d*\.?\d{0,2}$/.test(next)) setCashReceived(next); }} placeholder="0.00" /></label>}{cart.length > 0 && <div className={cashReceived !== '' && change < 0 ? 'change-line short' : 'change-line'}><span>{cashReceived !== '' && change < 0 ? 'Short' : 'Change'}</span><strong>{cashReceived === '' ? money(0) : money(Math.abs(change))}</strong></div>}{message && <div className={message.startsWith('Sale completed') ? 'success-message' : 'form-message'}>{message}</div>}</div><div className="order-footer"><button className={saving ? 'primary-btn full is-saving' : 'primary-btn full'} disabled={!cart.length || !cashReady || saving} aria-busy={saving} onClick={checkout}>{saving ? <><span className="sale-spinner" aria-hidden="true" />Saving sale...</> : <>Complete sale <CreditCard size={16} /></>}</button></div></aside>{cartOpen && <button type="button" className="cart-sheet-backdrop" aria-label="Close order" onClick={() => setCartOpen(false)} />}<button type="button" className="cart-dock" onClick={() => setCartOpen(true)}><ShoppingBag size={18} /><span>{cart.length ? `${cart.length} item${cart.length > 1 ? 's' : ''}` : 'View order'}</span><b>{money(total)}</b></button>{pricePicker && <PricePicker product={pricePicker} onClose={() => setPricePicker(null)} onConfirm={confirmCustomPrice} />}{picker && <AddonPicker product={picker} sweetness={sweetness} wantAddons={wantAddons} picked={pickedAddons} onSweetness={setSweetness} onWant={next => { setWantAddons(next); if (!next) setPickedAddons([]); }} onToggle={toggleAddon} onClose={() => setPicker(null)} onConfirm={confirmAdd} />}{receiptPrompt && <PrinterPrompt mode={receiptPrompt.state} note={printerNote} busy={printerBusy} onClose={() => { setReceiptPrompt(null); setMessage('Sale completed. The receipt was not printed.'); }} onDialog={() => { const opened = printReceiptDialog(receiptPrompt.receipt); setReceiptPrompt(null); setMessage(opened ? 'Sale completed. Confirm the print dialog to finish the receipt.' : 'Sale saved, but the receipt did not print.'); }} onRetry={async () => { setPrinterBusy(true); const printed = await printSaleReceipt(receiptPrompt.receipt); setPrinterBusy(false); if (printed === 'printed') { setReceiptPrompt(null); setMessage('Sale completed. Receipt sent to the printer.'); return; } setPrinterNote(printerProblem() || 'The receipt printer did not respond.'); setReceiptPrompt({ ...receiptPrompt, state: 'failed' }); }} onConnect={async kind => { setPrinterBusy(true); setPrinterNote(''); try { await ensurePrinter(kind); const printed = await printSaleReceipt(receiptPrompt.receipt); if (printed === 'printed') { setReceiptPrompt(null); setMessage('Sale completed. Receipt sent to the printer.'); } else { setPrinterNote(printerProblem() || 'The printer is connected, but the receipt did not print.'); setReceiptPrompt({ ...receiptPrompt, state: 'failed' }); } } catch (error) { setPrinterNote(error instanceof Error ? error.message : 'Could not connect the printer.'); } finally { setPrinterBusy(false); } }} />}</div>;
 }
 
 function GroupPhoto({ products, category, temperature, onApply }: { products: Product[]; category: Subcategory; temperature?: Temperature; onApply: (category: Subcategory, temperature: Temperature | undefined, imageUrl: string) => Promise<void> }) {
@@ -631,6 +680,134 @@ function ExpensesPage({ expenses, setExpenses }: { expenses: Expense[]; setExpen
       </section>
     </div>
     {pendingDelete && <ConfirmModal title="Remove expense" message={`Remove this ${pendingDelete.label} expense of ${money(Number(pendingDelete.amount))}? This cannot be undone.`} confirmLabel="Remove expense" busy={removing} onClose={() => { if (!removing) setPendingDelete(null); }} onConfirm={remove} />}
+  </div>;
+}
+
+function nextEmployeeNo(employees: Employee[]) {
+  const max = employees.reduce((highest, employee) => {
+    const value = Number(employee.employee_no.replace(/\D/g, ''));
+    return Number.isFinite(value) ? Math.max(highest, value) : highest;
+  }, 0);
+  return `EMP-${String(max + 1).padStart(3, '0')}`;
+}
+function formatClock(value: string | null) {
+  if (!value) return '';
+  return new Date(value).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' });
+}
+function lateMinutes(timeIn: Date, shiftStart: string) {
+  const [hour, minute] = shiftStart.split(':').map(Number);
+  const start = new Date(timeIn);
+  start.setHours(hour || 0, minute || 0, 0, 0);
+  return Math.max(0, Math.round((timeIn.getTime() - start.getTime()) / 60000));
+}
+function EmployeesPage({ employees, setEmployees, records, setRecords }: { employees: Employee[]; setEmployees: (items: Employee[]) => void; records: TimeRecord[]; setRecords: (items: TimeRecord[]) => void }) {
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState('');
+  const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
+  const [punchingId, setPunchingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Employee | null>(null);
+  const [removing, setRemoving] = useState(false);
+  const [attendanceDate, setAttendanceDate] = useState(localDateKey);
+  const nextNo = nextEmployeeNo(employees);
+  const query = search.trim().toLowerCase();
+  const visible = employees.filter(employee => !query || employee.name.toLowerCase().includes(query) || employee.employee_no.toLowerCase().includes(query));
+  const openRecord = (employeeId: string) => records.find(record => record.employee_id === employeeId && !record.time_out);
+  const present = records.filter(record => record.work_date === attendanceDate);
+  const closeAdd = () => { if (!saving) { setAdding(false); setName(''); } };
+  const save = async (event: FormEvent) => {
+    event.preventDefault();
+    const cleanName = name.trim();
+    if (!cleanName) return;
+    setSaving(true);
+    setMessage(null);
+    const { data, error } = await supabase.from('employees').insert({ name: cleanName, employee_no: nextEmployeeNo(employees) }).select().maybeSingle();
+    setSaving(false);
+    if (error || !data) {
+      setMessage({ tone: 'error', text: /schema cache|does not exist|Could not find the table/i.test(error?.message || '') ? 'Run the employees migration in Supabase, then save again.' : (error?.message || 'Unable to save employee.') });
+      return;
+    }
+    const saved = data as Employee;
+    setEmployees([...employees, saved].sort((a, b) => a.employee_no.localeCompare(b.employee_no)));
+    setMessage({ tone: 'ok', text: `${saved.name} added as ${saved.employee_no}.` });
+    setName('');
+    setAdding(false);
+  };
+  const punch = async (employee: Employee) => {
+    const open = openRecord(employee.id);
+    setPunchingId(employee.id);
+    setMessage(null);
+    if (open) {
+      const now = new Date();
+      const { data, error } = await supabase.from('time_records').update({ time_out: now.toISOString() }).eq('id', open.id).select().maybeSingle();
+      setPunchingId(null);
+      if (error || !data) { setMessage({ tone: 'error', text: error?.message || 'Unable to save time out.' }); return; }
+      setRecords(records.map(record => record.id === open.id ? data as TimeRecord : record));
+      setMessage({ tone: 'ok', text: `${employee.name} timed out at ${formatClock(now.toISOString())}.` });
+      return;
+    }
+    const now = new Date();
+    const { data, error } = await supabase.from('time_records').insert({ employee_id: employee.id, work_date: localDateKey(now), time_in: now.toISOString(), late_minutes: lateMinutes(now, employee.shift_start || '08:00') }).select().maybeSingle();
+    setPunchingId(null);
+    if (error || !data) { setMessage({ tone: 'error', text: /schema cache|does not exist|Could not find the table/i.test(error?.message || '') ? 'Run the employees migration in Supabase, then try again.' : (error?.message || 'Unable to save time in.') }); return; }
+    setRecords([data as TimeRecord, ...records]);
+    setMessage({ tone: 'ok', text: `${employee.name} timed in at ${formatClock(now.toISOString())}.` });
+  };
+  const remove = async () => {
+    if (!pendingDelete) return;
+    setRemoving(true);
+    const { error } = await supabase.from('employees').delete().eq('id', pendingDelete.id);
+    setRemoving(false);
+    if (error) { setMessage({ tone: 'error', text: error.message }); setPendingDelete(null); return; }
+    setEmployees(employees.filter(item => item.id !== pendingDelete.id));
+    setRecords(records.filter(item => item.employee_id !== pendingDelete.id));
+    setPendingDelete(null);
+  };
+  return <div className="page-stack">
+    <div className="page-intro">
+      <div><span className="eyebrow">TEAM</span><h2>Clock the team in and out.</h2><p className="muted">Search a name, then tap Time in. The clock uses the current time. After the shift, the button becomes Time out.</p></div>
+      <button className="primary-btn" type="button" onClick={() => { setName(''); setAdding(true); }}><Plus size={18} /> Add employee</button>
+    </div>
+    {message && <div className={message.tone === 'ok' ? 'success-message' : 'form-message'}>{message.text}</div>}
+    <section className="panel staff-roster">
+      <div className="section-heading"><div><span className="eyebrow">ROSTER</span><h3>{employees.length} {employees.length === 1 ? 'employee' : 'employees'}</h3></div></div>
+      <div className="search-box staff-search"><Search size={17} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search employee..." /></div>
+      {employees.length === 0 ? <EmptyState text="No employees yet. Add the first name." /> : visible.length === 0 ? <EmptyState text={`No employee matches “${search.trim()}”.`} /> : <div className="staff-list">{visible.map(employee => {
+        const open = openRecord(employee.id);
+        const todayRecord = records.find(record => record.employee_id === employee.id && record.work_date === localDateKey());
+        const note = open ? `In at ${formatClock(open.time_in)}` : todayRecord?.time_out ? `In ${formatClock(todayRecord.time_in)} · Out ${formatClock(todayRecord.time_out)}` : employee.employee_no;
+        return <article className={open ? 'staff-person on-duty' : 'staff-person'} key={employee.id}>
+          <div className="staff-person-main">
+            <span className="staff-avatar">{employee.name.trim().charAt(0).toUpperCase() || 'E'}</span>
+            <div className="mini-copy"><strong>{employee.name}</strong><small>{note}</small></div>
+          </div>
+          <div className="staff-person-actions">
+            <button type="button" className={open ? 'punch-btn out' : 'punch-btn in'} disabled={punchingId === employee.id} onClick={() => void punch(employee)}>{punchingId === employee.id ? 'Saving...' : open ? 'Time out' : 'Time in'}</button>
+            <button type="button" className="delete-btn" aria-label={`Remove ${employee.name}`} onClick={() => setPendingDelete(employee)}><Trash2 size={16} /></button>
+          </div>
+        </article>;
+      })}</div>}
+    </section>
+    <section className="panel attendance-board">
+      <div className="section-heading dtr-heading">
+        <div><span className="eyebrow">ATTENDANCE</span><h3>Who was present</h3></div>
+        <label className="attendance-date">Date<input type="date" value={attendanceDate} onChange={event => setAttendanceDate(event.target.value)} /></label>
+      </div>
+      <p className="staff-hint">{formatDay(attendanceDate)} · {present.length} {present.length === 1 ? 'person' : 'people'} present</p>
+      {present.length === 0 ? <EmptyState text={`No one timed in on ${formatDay(attendanceDate)}.`} /> : <div className="staff-list">{present.map(record => {
+        const employee = employees.find(item => item.id === record.employee_id);
+        return <article className="staff-person" key={record.id}>
+          <div className="staff-person-main">
+            <span className="staff-avatar">{(employee?.name || '?').trim().charAt(0).toUpperCase()}</span>
+            <div className="mini-copy"><strong>{employee?.name || 'Removed employee'}</strong><small>{employee?.employee_no || 'No number'}</small></div>
+          </div>
+          <div className="attendance-times"><span>In {formatClock(record.time_in)}</span><span>{record.time_out ? `Out ${formatClock(record.time_out)}` : 'Still in'}</span></div>
+        </article>;
+      })}</div>}
+    </section>
+    {adding && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) closeAdd(); }}><div className="modal" role="dialog" aria-modal="true" aria-labelledby="add-employee-title"><div className="modal-head"><div><span className="eyebrow">NEW EMPLOYEE</span><h2 id="add-employee-title">Add employee</h2></div><button className="icon-btn" type="button" onClick={closeAdd} aria-label="Close"><X size={20} /></button></div><form onSubmit={save}><p className="employee-no-preview">Employee no. {nextNo}</p><label>Employee name<input required autoFocus value={name} onChange={event => setName(event.target.value)} placeholder="Sarah Cruz" /></label><div className="modal-actions"><button type="button" className="secondary-btn" onClick={closeAdd} disabled={saving}>Cancel</button><button className="primary-btn" disabled={saving}>{saving ? 'Saving...' : 'Add employee'}</button></div></form></div></div>}
+    {pendingDelete && <ConfirmModal title="Remove employee" message={`Remove ${pendingDelete.name} and their time records? This cannot be undone.`} confirmLabel="Remove employee" busy={removing} onClose={() => { if (!removing) setPendingDelete(null); }} onConfirm={remove} />}
   </div>;
 }
 
